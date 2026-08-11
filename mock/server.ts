@@ -33,6 +33,7 @@ import type {
   Pagination,
   Problem,
   PaymentIntent,
+  ProfileResponse,
   QuizAttemptRequest,
   QuizAttemptResult,
   RevaluationRequestRow,
@@ -234,6 +235,7 @@ const state = {
   /** idempotencyKey -> payment id, so a retry never charges twice. */
   paymentKeys: {} as Record<string, string>,
   lectureProgress: {} as Record<string, { positionSeconds: number; watched: boolean }>,
+  profile: { ...D.PROFILE } as ProfileResponse,
 }
 
 let seq = 1000
@@ -831,6 +833,66 @@ POST('/api/student/certificates/print-orders/', async ({ req }) => {
     201,
     req,
   )
+})
+
+// ===========================================================================
+// Profile
+// ===========================================================================
+
+GET('/api/student/profile/', ({ req }) => json(state.profile, 200, req))
+
+PATCH('/api/student/profile/', async ({ req }) => {
+  const patch = await body<Record<string, unknown>>(req)
+  // Only the self-editable subset; identity and academic fields are the registrar's.
+  const allowed = ['phone', 'alternatePhone', 'presentAddress', 'permanentAddress', 'emergencyContact']
+  const rejected = Object.keys(patch).filter((k) => !allowed.includes(k))
+  if (rejected.length) {
+    return fail(403, { detail: `Not editable here: ${rejected.join(', ')}.`, code: 'read_only_field' }, req)
+  }
+  state.profile = { ...state.profile, ...patch }
+  return json(state.profile, 200, req)
+})
+
+POST('/api/student/profile/photo/', async ({ req }) => {
+  const form = await req.formData()
+  const file = form.get('photo')
+  if (!file || typeof file === 'string') return fail(400, { photo: ['Attach a photo.'] }, req)
+  state.profile = { ...state.profile, avatarUrl: `/mock/files/${encodeURIComponent(file.name)}` }
+  return json({ avatarUrl: state.profile.avatarUrl }, 200, req)
+})
+
+POST('/api/student/profile/documents/', async ({ req }) => {
+  const form = await req.formData()
+  const file = form.get('file')
+  const category = form.get('category')
+  if (!file || typeof file === 'string') return fail(400, { file: ['Attach a file.'] }, req)
+  const doc = {
+    id: nextId('doc'),
+    filename: file.name,
+    sizeBytes: file.size,
+    mimeType: file.type || 'application/octet-stream',
+    url: `/mock/files/${encodeURIComponent(file.name)}`,
+    uploadedAt: new Date().toISOString(),
+    category: (typeof category === 'string' ? category : 'IDENTIFICATION') as ProfileResponse['documents'][number]['category'],
+    status: 'PENDING' as const,
+  }
+  state.profile = { ...state.profile, documents: [doc, ...state.profile.documents] }
+  return json(doc, 201, req)
+})
+
+GET('/api/student/profile/security/', ({ req }) => json(D.SECURITY, 200, req))
+
+POST('/api/student/profile/security/password/', async ({ req }) => {
+  const { currentPassword, newPassword } = await body<{ currentPassword?: string; newPassword?: string }>(req)
+  if (!currentPassword) return fail(400, { currentPassword: ['This field may not be blank.'] }, req)
+  if (!newPassword || newPassword.length < 8) {
+    return fail(400, { newPassword: ['Must be at least 8 characters long.'] }, req)
+  }
+  return json({ summary: 'Password changed successfully.', at: new Date().toISOString() }, 200, req)
+})
+
+POST('/api/student/profile/security/sessions/revoke-others/', ({ req }) => {
+  return json({ summary: 'Signed out of all other sessions.', at: new Date().toISOString() }, 200, req)
 })
 
 // ===========================================================================

@@ -68,11 +68,13 @@ import type {
   PaymentHistoryResponse,
   PaymentOptionsResponse,
   PracticeQuizResponse,
+  ProfileResponse,
   QuizGeneratorOptionsResponse,
   QuizzesResponse,
   RecommendationsResponse,
   RecordingsResponse,
   RevaluationResponse,
+  SecurityResponse,
   SemesterRegistrationResponse,
   StudentDashboardResponse,
   StudyPlannerOptionsResponse,
@@ -1164,5 +1166,63 @@ export const CERTIFICATES_RESPONSE: CertificatesResponse = {
   notices: [
     { id: 'nc-1', title: 'Convocation 2026 Registration', body: 'Last date to apply is the 24th.' },
     { id: 'nc-2', title: 'Holiday Notice', body: 'Campus closed on Friday for the festival.' },
+  ],
+}
+
+// ===========================================================================
+// Profile
+// ===========================================================================
+
+export const PROFILE: ProfileResponse = {
+  ...ME,
+  status: 'ACTIVE',
+  bloodGroup: 'B+',
+  nationalId: '1998567890123',
+  dateOfBirth: '1999-10-15',
+  gender: 'Male',
+  phone: '+880 1712-345678',
+  alternatePhone: null,
+  presentAddress: 'Apt 4B, 12 Green Road, Dhanmondi, Dhaka 1205',
+  permanentAddress: 'House 45, Road 2, Block A, Bashundhara R/A, Dhaka 1229',
+  emergencyContact: { name: 'Kamrul Hasan', relationship: 'Father', phone: '+880 1819-223344' },
+  academic: {
+    faculty: 'School of Engineering & Applied Sciences',
+    advisor: {
+      id: 'fac-1',
+      name: 'Dr. Ishtiaque Ahmed',
+      title: 'Dept. Head, CS',
+      email: 'i.ahmed@unigpt.edu',
+      avatarUrl: null,
+      officeRoom: null,
+    },
+    admissionDate: '2021-08-15',
+    expectedGraduation: '2025-05-30',
+    campus: 'Main Tech Campus',
+    enrollmentStatus: 'Full-Time',
+  },
+  documents: [
+    { id: 'doc-1', filename: 'Student ID Card', category: 'IDENTIFICATION', status: 'VERIFIED', sizeBytes: 1_258_291, mimeType: 'application/pdf', url: '/mock/files/student-id-card.pdf', uploadedAt: dayIn(-120) },
+    { id: 'doc-2', filename: 'Official Transcript', category: 'ACADEMIC', status: 'VERIFIED', sizeBytes: 3_565_158, mimeType: 'application/pdf', url: '/mock/files/official-transcript.pdf', uploadedAt: dayIn(-140) },
+    { id: 'doc-3', filename: 'National ID', category: 'IDENTIFICATION', status: 'VERIFIED', sizeBytes: 2_202_009, mimeType: 'image/jpeg', url: '/mock/files/national-id.jpg', uploadedAt: dayIn(-119) },
+    { id: 'doc-4', filename: 'Offer Letter', category: 'ACADEMIC', status: 'VERIFIED', sizeBytes: 838_861, mimeType: 'application/pdf', url: '/mock/files/offer-letter.pdf', uploadedAt: dayIn(-155) },
+    { id: 'doc-5', filename: 'Tuition Fee Receipt', category: 'FINANCIAL', status: 'VERIFIED', sizeBytes: 1_572_864, mimeType: 'application/pdf', url: '/mock/files/tuition-receipt.pdf', uploadedAt: dayIn(-95) },
+    { id: 'doc-6', filename: 'Medical Certificate', category: 'MEDICAL', status: 'PENDING', sizeBytes: 4_404_019, mimeType: 'image/png', url: '/mock/files/medical-certificate.png', uploadedAt: inDays(0) },
+  ],
+  activity: [
+    { id: 'act-1', title: 'Attendance recorded', detail: 'CS-301 Data Structures and Algorithms', category: 'ACADEMIC', at: inDays(0) },
+    { id: 'act-2', title: 'Password changed successfully', detail: 'Account security updated via settings panel.', category: 'SECURITY', at: inDays(-1) },
+    { id: 'act-3', title: 'Course Registration Approved', detail: 'Spring 2026 semester registration finalized by Advisor.', category: 'ACADEMIC', at: inDays(-4) },
+    { id: 'act-4', title: 'Uploaded document', detail: 'Fee_Receipt_Spring2026.pdf', category: 'SYSTEM', at: inDays(-5) },
+    { id: 'act-5', title: 'Logged in successfully', detail: 'IP 192.168.1.45 · Chrome on macOS', category: 'SYSTEM', at: inDays(-6) },
+  ],
+}
+
+export const SECURITY: SecurityResponse = {
+  twoFactorEnabled: true,
+  smsRecoveryPhone: '+1 (***) ***-8842',
+  authenticatorConfigured: true,
+  sessions: [
+    { id: 'sess-1', deviceLabel: 'MacBook Pro', location: 'San Francisco, CA · 192.168.1.1', lastSeenAt: inDays(0), isCurrent: true },
+    { id: 'sess-2', deviceLabel: 'iPhone 15', location: 'San Jose, CA · 10.0.0.45', lastSeenAt: inDays(0), isCurrent: false },
   ],
 }

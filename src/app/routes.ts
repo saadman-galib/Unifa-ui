@@ -92,4 +92,9 @@ export const SCREENS: ScreenRoute[] = [
   { path: '/student/lms/quizzes', title: 'Quizzes', node: '6:3564' },
   { path: '/student/lms/quizzes/:id/practice', title: 'Practice Quiz', node: '6:4278' },
   { path: '/student/lms/recordings', title: 'Recorded Classes', node: '6:2573' },
+  { path: '/student/profile', title: 'My Profile Dashboard', node: '11:4256' },
+  { path: '/student/profile/academic', title: 'Academic Information', node: '11:4476' },
+  { path: '/student/profile/documents', title: 'Documents Manager', node: '11:3993' },
+  { path: '/student/profile/activity', title: 'Activity Log', node: '11:4782' },
+  { path: '/student/profile/security', title: 'Security Panel', node: '11:5223' },
 ]

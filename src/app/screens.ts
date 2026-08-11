@@ -113,6 +113,13 @@ export const SCREEN_COMPONENTS: Record<string, ComponentType> = {
   // ------------------------------------------------------- certificates
   '/student/certificates': page(() => import('@/features/certificates/page'), 'Certificates'),
 
+  // ------------------------------------------------------ My Profile
+  '/student/profile': page(() => import('@/features/profile/pages/personal-info'), 'PersonalInfo'),
+  '/student/profile/academic': page(() => import('@/features/profile/pages/academic-info'), 'AcademicInfo'),
+  '/student/profile/documents': page(() => import('@/features/profile/pages/documents'), 'Documents'),
+  '/student/profile/activity': page(() => import('@/features/profile/pages/activity-log'), 'ActivityLog'),
+  '/student/profile/security': page(() => import('@/features/profile/pages/security'), 'Security'),
+
   // ------------------------------- admin operations (no Figma frames yet)
   '/admin/health': page(() => import('@/features/admin/pages/system-health'), 'SystemHealth'),
   '/admin/settings': page(() => import('@/features/admin/pages/settings'), 'AdminSettings'),
