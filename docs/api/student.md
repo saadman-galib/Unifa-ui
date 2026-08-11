@@ -1,8 +1,8 @@
 # Student API Contract
 
-Everything the student portal sends and receives. 63 GET, 28 write endpoints,
-covering 65 student screens in [screen-inventory.md](../screen-inventory.md)
-(60 original + 5 My Profile).
+Everything the student portal sends and receives. 75 GET, 37 write endpoints,
+covering 81 student screens in [screen-inventory.md](../screen-inventory.md)
+(60 original + 5 My Profile + 16 campus services).
 
 - **Types:** [`src/types/common.ts`](../../src/types/common.ts), [`src/types/student.ts`](../../src/types/student.ts) — import from `@/types`
 - **Mock server:** `bun run mock` → `http://localhost:8787` ([mock/server.ts](../../mock/server.ts))
@@ -287,6 +287,70 @@ other field, same contract as `PATCH faculty/profile/`.
 
 Security is a separate GET/mutation group because it is a drill-in from the
 main page (`My Profile › Security`), not a `SUB_NAV` tab.
+
+### 3.10 Service requests — shared shape, three domains
+
+Student Services, Transport, and Hostel all raise the same kind of ticket —
+a category, a priority, a subject, a description, a status that moves
+`SUBMITTED → IN_PROGRESS → COMPLETED/CLOSED`. One `ServiceRequest` type
+backs all three; each domain gets its own scoped list/create endpoint.
+
+| Method | Path | R → | Screen |
+|---|---|---|---|
+| GET | `services/` | → `StudentServicesResponse` | Services Dashboard |
+| GET | `services/requests/?status=` | → `ServiceRequestsResponse` | Request History |
+| GET | `services/requests/{id}/` | → `ServiceRequest` (id or reference) | Request Detail |
+| POST | `services/requests/` | `CreateServiceRequestRequest` → `ServiceRequest` (201) | New Request |
+| GET | `transport/requests/` | → `ServiceRequestsResponse` | — |
+| POST | `transport/requests/` | `CreateServiceRequestRequest` → `ServiceRequest` (201) | Transport Request Desk |
+| GET | `hostel/requests/` | → `ServiceRequestsResponse` | — |
+| POST | `hostel/requests/` | `CreateServiceRequestRequest` → `ServiceRequest` (201) | Hostel Service Requests |
+
+No attachment upload on any of these yet — the New Request frame shows one
+pre-uploaded file, but wiring multipart here means re-deriving the pattern
+`lms/assignments/{id}/submissions/` already uses for a field that isn't core
+to the request lifecycle. Add it the same way if asked.
+
+### 3.11 Library — 4 screens
+
+| Method | Path | R → | Screen |
+|---|---|---|---|
+| GET | `library/?q=&category=` | → `LibraryOverviewResponse` | Dashboard |
+| GET | `library/borrowed/` | → `MyBorrowedBooksResponse` | My Borrowed Books |
+| POST | `library/borrowed/{loanId}/renew/` | → `RenewLoanResult` | My Borrowed Books |
+| GET | `library/history/` | → `LibraryHistoryResponse` | History & Fines |
+| POST | `library/fines/pay/` | → `{ summary, at }` | History & Fines |
+| POST | `library/acquisition-requests/` | `BookAcquisitionRequest` → `{ summary, at }` (201) | Request Desk |
+| POST | `library/feedback/` | `LibraryFeedbackRequest` → `{ summary, at }` (201) | Request Desk |
+
+Catalog-and-loan-centric, not ticket-centric — deliberately not folded into
+the `ServiceRequest` shape in §3.10, since a book, an ISBN, and a due date
+are a different kind of fact than a support ticket.
+
+### 3.12 Transport — 4 screens
+
+| Method | Path | R → | Screen |
+|---|---|---|---|
+| GET | `transport/` | → `TransportOverviewResponse` | Dashboard |
+| GET | `transport/payments/` | → `TransportPaymentHistoryResponse` | Payment History |
+| POST | `transport/payments/pay/` | → `{ summary, at }` | Payment History / Dashboard |
+
+Request Desk uses §3.10's shared shape. `routeUpdatedAt` on the Dashboard
+response stands in for the "Live GPS" the frame's name promises — this mock
+has no vehicle to track, so Route Details renders a static, timestamped
+stop-by-stop timeline instead of a map.
+
+### 3.13 Hostel — 4 screens
+
+| Method | Path | R → | Screen |
+|---|---|---|---|
+| GET | `hostel/` | → `HostelOverviewResponse` | Dashboard, and Room Details (same GET — a strict superset, no reason for a second endpoint) |
+| GET | `hostel/ledger/` | → `HostelLedgerResponse` | Fee Ledger |
+| POST | `hostel/ledger/pay/` | `{ paymentId }` → `{ summary, at }` | Fee Ledger |
+
+Service Requests uses §3.10's shared shape; its category list
+(Leave Request, Visitor Request, Complaint, Gate Pass) comes straight from
+the Dashboard's own "Quick Links" tile.
 
 ---
 

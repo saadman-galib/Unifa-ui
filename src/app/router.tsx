@@ -14,11 +14,7 @@ import type { Role } from '@/lib/auth'
  * SCREEN_COMPONENTS, exactly as for inventory screens.
  */
 const EXTRA_ROUTES: { path: string; title: string }[] = [
-  { path: '/student/library', title: 'Library' },
-  { path: '/student/services', title: 'Student Services' },
   { path: '/student/clubs', title: 'Clubs' },
-  { path: '/student/transport', title: 'Transport' },
-  { path: '/student/hostel', title: 'Hostel' },
   { path: '/student/digital-id', title: 'Digital ID' },
   { path: '/student/career', title: 'Career' },
   { path: '/student/communication', title: 'Communication' },

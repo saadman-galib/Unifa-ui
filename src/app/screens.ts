@@ -120,6 +120,30 @@ export const SCREEN_COMPONENTS: Record<string, ComponentType> = {
   '/student/profile/activity': page(() => import('@/features/profile/pages/activity-log'), 'ActivityLog'),
   '/student/profile/security': page(() => import('@/features/profile/pages/security'), 'Security'),
 
+  // ------------------------------------------------------ Library
+  '/student/library': page(() => import('@/features/library/pages/overview'), 'LibraryOverview'),
+  '/student/library/borrowed': page(() => import('@/features/library/pages/borrowed'), 'MyBorrowedBooks'),
+  '/student/library/history': page(() => import('@/features/library/pages/history'), 'LibraryHistory'),
+  '/student/library/request': page(() => import('@/features/library/pages/request'), 'LibraryRequest'),
+
+  // ------------------------------------------------------ Student Services
+  '/student/services': page(() => import('@/features/services/pages/overview'), 'StudentServicesOverview'),
+  '/student/services/new': page(() => import('@/features/services/pages/new-request'), 'NewServiceRequest'),
+  '/student/services/history': page(() => import('@/features/services/pages/history'), 'RequestHistory'),
+  '/student/services/:id': page(() => import('@/features/services/pages/request-detail'), 'RequestDetail'),
+
+  // ------------------------------------------------------ Transport
+  '/student/transport': page(() => import('@/features/transport/pages/overview'), 'TransportOverview'),
+  '/student/transport/request': page(() => import('@/features/transport/pages/request'), 'TransportRequest'),
+  '/student/transport/payments': page(() => import('@/features/transport/pages/payments'), 'TransportPayments'),
+  '/student/transport/route': page(() => import('@/features/transport/pages/route'), 'RouteDetails'),
+
+  // ------------------------------------------------------ Hostel
+  '/student/hostel': page(() => import('@/features/hostel/pages/overview'), 'HostelOverview'),
+  '/student/hostel/request': page(() => import('@/features/hostel/pages/request'), 'HostelRequest'),
+  '/student/hostel/ledger': page(() => import('@/features/hostel/pages/ledger'), 'HostelLedger'),
+  '/student/hostel/room': page(() => import('@/features/hostel/pages/room'), 'RoomDetails'),
+
   // ------------------------------- admin operations (no Figma frames yet)
   '/admin/health': page(() => import('@/features/admin/pages/system-health'), 'SystemHealth'),
   '/admin/settings': page(() => import('@/features/admin/pages/settings'), 'AdminSettings'),

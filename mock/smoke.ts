@@ -30,6 +30,7 @@ const FACULTY_SAMPLES: Record<string, string> = {
   '/api/faculty/submissions/:id/': 'sub-1',
   '/api/admin/users/:id/security/': 'usr-1000',
   '/api/admin/admissions/:id/': 'app-0',
+  '/api/student/services/requests/:id/': 'sr-1',
 }
 
 /**
