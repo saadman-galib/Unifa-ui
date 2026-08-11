@@ -2,6 +2,15 @@
 
 Every top-level frame in the Figma file, mapped to a route. **93 frames → 83 buildable screens**, plus 1 shared component and 9 superseded iterations.
 
+> **2026-08-11:** The file has since grown to 135 top-level frames (`get_metadata`
+> recount). 42 new frames (node prefix `11:*`) span 8 feature areas — Profile,
+> Digital ID, Settings, Communication, Library, Student Services, Transport,
+> Hostel — plus a wholly new "Health" module not yet in `nav-config.ts` at
+> all. Only **My Profile** (5 of the 9 tagged frames; see below) is built so
+> far — see [superpowers/specs/2026-08-11-student-profile-design.md](superpowers/specs/2026-08-11-student-profile-design.md).
+> The remaining 33 frames are tracked but not yet designed into routes —
+> future phases.
+
 - **File key:** `H6SDkbXPzmF8l2DkDQmvB9`
 - **Open a frame:** `https://www.figma.com/design/H6SDkbXPzmF8l2DkDQmvB9/uninexus?node-id=<node-id with ':' → '-'>`
 - **Pull design context:** `get_design_context(fileKey, nodeId)` — always read [design.md](design.md) first and build from its tokens, not from the returned literals.
@@ -110,9 +119,29 @@ Route prefix `/student`. Sidebar: Dashboard, My Profile, Academic, Learning (LMS
 | `1:7728` | AI Academic Advisor | `/student/ai/advisor` | canonical |
 | `1:8101` | AI Course Recommendation | `/student/ai/recommendations` | canonical |
 
-### Not designed
+### My Profile — 5
 
-Sidebar links with **no frame in the file**: My Profile, Library, Student Services, Clubs, Transport, Hostel, Digital ID. See [prd.md](prd.md) §6.
+Route prefix `/student/profile`. `SUB_NAV` pills: Personal Info, Academic, Documents, Activity Log. Security is a drill-in from the main page, not a pill.
+
+| Node | Frame | Route | Status |
+|---|---|---|---|
+| `11:4256` | My Profile Dashboard | `/student/profile` | canonical |
+| `11:4476` | Academic Information | `/student/profile/academic` | canonical |
+| `11:3993` | Documents Manager | `/student/profile/documents` | canonical |
+| `11:4782` | Activity Log | `/student/profile/activity` | canonical |
+| `11:5223` | Security Panel | `/student/profile/security` | canonical |
+| `11:3724` | Edit Personal Information | — | folded into `/student/profile` (edit mode) |
+| `11:3904` | Profile Photo Studio | — | folded into `/student/profile` (photo upload) |
+| `11:4395` | Upload Document | — | folded into `/student/profile/documents` (upload) |
+| `11:5090` | Verification Desk | — | mislabeled — actually Digital ID content, deferred to that nav item |
+
+### Not designed / not yet built
+
+Sidebar links with **no frame in the file**: Library, Student Services, Clubs, Transport, Hostel, Digital ID. See [prd.md](prd.md) §6.
+
+**Frames exist but not yet built** (2026-08-11 batch, 33 of 42 frames, future phases): Digital ID (real content is `11:5090` + `11:4974`), Settings (`11:5888` + privacy/notification/device/audit sub-frames), Communication (`11:6059` + 4 more), Library (`11:3488` + 3 more), Student Services (`11:819` + 3 more), Transport (`11:196` + 4 more), Hostel (`11:446` + 3 more). See the spec note at the top of this document.
+
+**A wholly new module, not in `nav-config.ts` at all:** Health — `11:7728` Health Dashboard, `11:7860` Emergency & Health Services, `11:8078` Medical Certificate Management, `11:8305` Student Health Records, `11:8578` Health Analytics & Reports.
 
 ---
 
@@ -174,6 +203,9 @@ Sidebar links with no frame: System Health, Settings, Support. See [prd.md](prd.
 
 ## Counts
 
+Original batch (verified against the Figma metadata dump at the time: 93
+top-level frames on page `0:1` — `1:*` 44, `6:*` 31, `7:*` 16, `9:*` 2):
+
 | Persona | Frames | Canonical | Superseded |
 |---|---|---|---|
 | Student | 61 | 59 + 1 component | 1 |
@@ -181,4 +213,8 @@ Sidebar links with no frame: System Health, Settings, Support. See [prd.md](prd.
 | Admin/ERP | 16 | 10 | 6 |
 | **Total** | **93** | **83 + 1** | **9** |
 
-> Verified against the Figma metadata dump: 93 top-level frames on page `0:1` — `1:*` 44, `6:*` 31, `7:*` 16, `9:*` 2. Re-run `get_metadata(fileKey, "0:1")` and recount if frames are added.
+**2026-08-11 recount:** 135 top-level frames (`1:*` 44, `6:*` 31, `7:*` 16,
+`9:*` 2, `11:*` 42). Of the 42 new `11:*` frames, 9 are accounted for by My
+Profile (5 routed, 3 folded into those routes as edit/upload modals, 1
+deferred to Digital ID); 33 remain tracked but not yet routed. Re-run
+`get_metadata(fileKey, "0:1")` and recount if frames are added again.

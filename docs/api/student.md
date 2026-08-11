@@ -1,7 +1,8 @@
 # Student API Contract
 
-Everything the student portal sends and receives. 61 GET, 23 write endpoints,
-covering all 60 student screens in [screen-inventory.md](../screen-inventory.md).
+Everything the student portal sends and receives. 63 GET, 28 write endpoints,
+covering 65 student screens in [screen-inventory.md](../screen-inventory.md)
+(60 original + 5 My Profile).
 
 - **Types:** [`src/types/common.ts`](../../src/types/common.ts), [`src/types/student.ts`](../../src/types/student.ts) — import from `@/types`
 - **Mock server:** `bun run mock` → `http://localhost:8787` ([mock/server.ts](../../mock/server.ts))
@@ -263,6 +264,30 @@ Chat is the only endpoint that is not JSON — see §7.2.
 `Certificate.downloadUrl` is private and short-lived; `verifyUrl` is a public
 page safe to hand to an employer. Two fields because they have two audiences.
 
+### 3.9 Profile — 5 screens
+
+| Method | Path | R → | Screen |
+|---|---|---|---|
+| GET | `profile/` | → `ProfileResponse` | Personal Info, Academic, Documents, Activity Log |
+| PATCH | `profile/` | `UpdateProfileRequest` → `ProfileResponse` | Personal Info |
+| POST | `profile/photo/` | multipart → `{ avatarUrl }` | Personal Info |
+| POST | `profile/documents/` | multipart → `ProfileDocument` (201) | Documents |
+| GET | `profile/security/` | → `SecurityResponse` | Security |
+| POST | `profile/security/password/` | `ChangePasswordRequest` → `{ summary, at }` | Security |
+| POST | `profile/security/sessions/revoke-others/` | → `{ summary, at }` | Security |
+
+One GET covers all 4 `SUB_NAV` tabs — screen-shaped, like every other module
+(§2.1). `ProfileResponse` extends `Me` rather than duplicating its fields, so
+the profile page is one request instead of two.
+
+Self-editable via `PATCH`: `phone`, `alternatePhone`, `presentAddress`,
+`permanentAddress`, `emergencyContact`. Everything else — name, national ID,
+blood group, academic standing — is the registrar's; the server 403s on any
+other field, same contract as `PATCH faculty/profile/`.
+
+Security is a separate GET/mutation group because it is a drill-in from the
+main page (`My Profile › Security`), not a `SUB_NAV` tab.
+
 ---
 
 ## 4. What the client sends
@@ -308,6 +333,8 @@ you'd win the bet 99 times out of 100 and losing costs a toast.
 | Quiz attempt | **no** | — | The score is the answer; do not guess it |
 | Revaluation request | **partial** | Prepend a `PENDING` row | Remove, toast the field error |
 | Semester registration | **no** | — | Advisor approval is a workflow |
+| Update profile contact info | **yes** | Merge patch onto `ProfileResponse` | Restore snapshot |
+| Change password | **no** | — | A wrong optimistic "changed" is a lockout risk |
 | **Any payment** | **never** | — | See below |
 
 ### 5.3 Never optimistic: money

@@ -21,6 +21,7 @@ import type {
   ISODateTime,
   Instructor,
   LetterGrade,
+  Me,
   Metric,
   Money,
   TimeOfDay,
@@ -1133,3 +1134,87 @@ export type PrintOrder = {
   fee: Money
   createdAt: ISODateTime
 }
+
+// ===========================================================================
+// Profile  ·  GET /api/student/profile/
+// ===========================================================================
+
+export type DocumentCategory = 'IDENTIFICATION' | 'ACADEMIC' | 'FINANCIAL' | 'MEDICAL'
+export type DocumentStatus = 'VERIFIED' | 'PENDING'
+
+/** A profile document — `Attachment` plus the filing metadata Documents shows. */
+export type ProfileDocument = Attachment & {
+  category: DocumentCategory
+  status: DocumentStatus
+}
+
+export type ActivityCategory = 'ACADEMIC' | 'SECURITY' | 'SYSTEM'
+
+export type ActivityEntry = {
+  id: Id
+  title: string
+  detail: string | null
+  category: ActivityCategory
+  at: ISODateTime
+}
+
+export type EmergencyContact = { name: string; relationship: string; phone: string }
+
+export type AcademicStanding = {
+  faculty: string | null
+  advisor: Instructor | null
+  admissionDate: ISODate | null
+  expectedGraduation: ISODate | null
+  campus: string | null
+  enrollmentStatus: string
+}
+
+/**
+ * Everything the 4 profile tabs need in one round trip. Extends `Me` — the
+ * identity fields the JWT claims already summarise — rather than refetching
+ * them, so the page costs one request, not two.
+ */
+export type ProfileResponse = Me & {
+  status: 'ACTIVE' | 'INACTIVE'
+  bloodGroup: string | null
+  nationalId: string | null
+  dateOfBirth: ISODate | null
+  gender: string | null
+  phone: string | null
+  alternatePhone: string | null
+  presentAddress: string | null
+  permanentAddress: string | null
+  emergencyContact: EmergencyContact | null
+  academic: AcademicStanding
+  documents: ProfileDocument[]
+  activity: ActivityEntry[]
+}
+
+/** PATCH /api/student/profile/ — self-editable subset; everything else is the registrar's. */
+export type UpdateProfileRequest = Partial<{
+  phone: string
+  alternatePhone: string
+  presentAddress: string
+  permanentAddress: string
+  emergencyContact: EmergencyContact
+}>
+
+// ---------------------------------------------------------------- security
+
+export type ProfileSession = {
+  id: Id
+  deviceLabel: string
+  location: string | null
+  lastSeenAt: ISODateTime
+  isCurrent: boolean
+}
+
+/** GET /api/student/profile/security/ */
+export type SecurityResponse = {
+  twoFactorEnabled: boolean
+  smsRecoveryPhone: string | null
+  authenticatorConfigured: boolean
+  sessions: ProfileSession[]
+}
+
+export type ChangePasswordRequest = { currentPassword: string; newPassword: string }

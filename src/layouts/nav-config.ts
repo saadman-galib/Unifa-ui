@@ -57,7 +57,7 @@ export type NavEntry =
 export const NAV: Record<Role, NavEntry[]> = {
   student: [
     { kind: 'link', label: 'Dashboard', to: '/student', icon: LayoutDashboard, end: true },
-    { kind: 'link', label: 'My Profile', to: '/student/profile', icon: UserRound, undesigned: true },
+    { kind: 'link', label: 'My Profile', to: '/student/profile', icon: UserRound },
     { kind: 'link', label: 'Academic', to: '/student/academic/courses', icon: GraduationCap },
     { kind: 'link', label: 'Learning (LMS)', to: '/student/lms', icon: BookOpen },
     { kind: 'link', label: 'Attendance', to: '/student/attendance', icon: CalendarCheck },
@@ -110,6 +110,12 @@ export const NAV: Record<Role, NavEntry[]> = {
 
 /** Sub-navigation shown inside a module, keyed by the module's base path. */
 export const SUB_NAV: Record<string, { label: string; to: string; end?: boolean }[]> = {
+  '/student/profile': [
+    { label: 'Personal Info', to: '/student/profile', end: true },
+    { label: 'Academic', to: '/student/profile/academic' },
+    { label: 'Documents', to: '/student/profile/documents' },
+    { label: 'Activity Log', to: '/student/profile/activity' },
+  ],
   '/student/academic': [
     { label: 'My Courses', to: '/student/academic/courses' },
     { label: 'Curriculum', to: '/student/academic/curriculum' },
