@@ -6,9 +6,14 @@ Every top-level frame in the Figma file, mapped to a route. **93 frames → 83 b
 > recount). 42 new frames (node prefix `11:*`) span 8 feature areas — Profile,
 > Digital ID, Settings, Communication, Library, Student Services, Transport,
 > Hostel — plus a wholly new "Health" module not yet in `nav-config.ts` at
-> all. Only **My Profile** (5 of the 9 tagged frames; see below) is built so
-> far — see [superpowers/specs/2026-08-11-student-profile-design.md](superpowers/specs/2026-08-11-student-profile-design.md).
-> The remaining 33 frames are tracked but not yet designed into routes —
+> all. **My Profile** (5 screens) and the **campus services cluster** —
+> Library, Student Services, Transport, Hostel (16 screens) — are built; see
+> [superpowers/specs/2026-08-11-student-profile-design.md](superpowers/specs/2026-08-11-student-profile-design.md)
+> and [superpowers/specs/2026-08-11-campus-services-design.md](superpowers/specs/2026-08-11-campus-services-design.md).
+> Transport Payments/Route and all 3 non-Dashboard Hostel screens were built
+> **without a Figma screenshot** (MCP rate limit) — pattern-inferred from
+> sibling frames, flagged individually below, worth a visual diff once
+> available. Digital ID, Settings, Communication, and Health remain —
 > future phases.
 
 - **File key:** `H6SDkbXPzmF8l2DkDQmvB9`
@@ -135,11 +140,55 @@ Route prefix `/student/profile`. `SUB_NAV` pills: Personal Info, Academic, Docum
 | `11:4395` | Upload Document | — | folded into `/student/profile/documents` (upload) |
 | `11:5090` | Verification Desk | — | mislabeled — actually Digital ID content, deferred to that nav item |
 
+### Library — 4
+
+Route prefix `/student/library`. `SUB_NAV` pills: Dashboard, My Borrowed Books, History & Fines, Requests.
+
+| Node | Frame | Route | Status |
+|---|---|---|---|
+| `11:3488` | Library Dashboard | `/student/library` | canonical |
+| `11:3309` | My Borrowed Books | `/student/library/borrowed` | canonical |
+| `11:3066` | Library History & Fines | `/student/library/history` | canonical |
+| `11:2870` | Library Request Desk | `/student/library/request` | canonical |
+
+### Student Services — 4
+
+Route prefix `/student/services`. `SUB_NAV` pills: Dashboard, New Request, History. Request Details is a drill-in from a request row, not a pill.
+
+| Node | Frame | Route | Status |
+|---|---|---|---|
+| `11:819` | Student Services Dashboard | `/student/services` | canonical — frame itself was an empty shell (title/subtitle only); built the counts+recent-requests dashboard the sidebar item implies |
+| `11:2` | New Service Request Desk | `/student/services/new` | canonical |
+| `11:2326` | Request History & Audit | `/student/services/history` | canonical |
+| `11:1502` | Request Details & Progress | `/student/services/:id` | canonical |
+
+### Transport — 4
+
+Route prefix `/student/transport`. `SUB_NAV` pills: Dashboard, Request, Payments, Route.
+
+| Node | Frame | Route | Status |
+|---|---|---|---|
+| `11:196` | Transport Dashboard | `/student/transport` | canonical |
+| `11:2612` | Transport Request Desk | `/student/transport/request` | canonical |
+| `11:1217` | Transport Payment History | `/student/transport/payments` | canonical — **built without a screenshot**, Figma MCP hit its rate limit; inferred from the `PaymentHistory` ledger pattern already in the app. Diff against Figma once available. |
+| `11:1925` | Route Details & Live GPS | `/student/transport/route` | canonical — **built without a screenshot**, same rate limit. No live map: a static stop-by-stop timeline, since the mock has no vehicle to track. |
+
+### Hostel — 4
+
+Route prefix `/student/hostel`. `SUB_NAV` pills: Dashboard, Request, Fee Ledger, Room Details.
+
+| Node | Frame | Route | Status |
+|---|---|---|---|
+| `11:446` | Hostel Dashboard | `/student/hostel` | canonical |
+| `11:2023` | Hostel Service Requests | `/student/hostel/request` | canonical — **built without a screenshot**; the Dashboard's own "Quick Links" tile names the request types (Leave/Visitor/Complaint/Gate Pass), which is what the form uses. |
+| `11:914` | Hostel Fee & Payment Ledger | `/student/hostel/ledger` | canonical — **built without a screenshot**; same ledger pattern as Transport Payments. |
+| `11:1623` | Room Details Workspace | `/student/hostel/room` | canonical — **built without a screenshot**; expands the Dashboard's own "My Hostel Information" + "Roommates" cards, same GET. |
+
 ### Not designed / not yet built
 
-Sidebar links with **no frame in the file**: Library, Student Services, Clubs, Transport, Hostel, Digital ID. See [prd.md](prd.md) §6.
+Sidebar links with **no frame in the file**: Clubs, Digital ID. See [prd.md](prd.md) §6.
 
-**Frames exist but not yet built** (2026-08-11 batch, 33 of 42 frames, future phases): Digital ID (real content is `11:5090` + `11:4974`), Settings (`11:5888` + privacy/notification/device/audit sub-frames), Communication (`11:6059` + 4 more), Library (`11:3488` + 3 more), Student Services (`11:819` + 3 more), Transport (`11:196` + 4 more), Hostel (`11:446` + 3 more). See the spec note at the top of this document.
+**Frames exist but not yet built** (2026-08-11 batch, 17 of 42 frames, future phases): Digital ID (real content is `11:5090` + `11:4974`), Settings (`11:5888` + privacy/notification/device/audit sub-frames), Communication (`11:6059` + 4 more). See the spec note at the top of this document.
 
 **A wholly new module, not in `nav-config.ts` at all:** Health — `11:7728` Health Dashboard, `11:7860` Emergency & Health Services, `11:8078` Medical Certificate Management, `11:8305` Student Health Records, `11:8578` Health Analytics & Reports.
 
@@ -214,7 +263,10 @@ top-level frames on page `0:1` — `1:*` 44, `6:*` 31, `7:*` 16, `9:*` 2):
 | **Total** | **93** | **83 + 1** | **9** |
 
 **2026-08-11 recount:** 135 top-level frames (`1:*` 44, `6:*` 31, `7:*` 16,
-`9:*` 2, `11:*` 42). Of the 42 new `11:*` frames, 9 are accounted for by My
+`9:*` 2, `11:*` 42). Of the 42 new `11:*` frames: 9 accounted for by My
 Profile (5 routed, 3 folded into those routes as edit/upload modals, 1
-deferred to Digital ID); 33 remain tracked but not yet routed. Re-run
+deferred to Digital ID); 16 routed by the campus services cluster (Library,
+Student Services, Transport, Hostel — all 1:1 with their frames, no folding).
+17 remain tracked but not yet routed: Digital ID, Settings, Communication,
+Health. Re-run
 `get_metadata(fileKey, "0:1")` and recount if frames are added again.

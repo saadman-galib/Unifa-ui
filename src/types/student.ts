@@ -1218,3 +1218,174 @@ export type SecurityResponse = {
 }
 
 export type ChangePasswordRequest = { currentPassword: string; newPassword: string }
+
+// ===========================================================================
+// Service requests — shared by Student Services, Transport, Hostel
+// ===========================================================================
+
+export type RequestPriority = 'LOW' | 'MEDIUM' | 'HIGH'
+export type RequestStatus = 'SUBMITTED' | 'IN_PROGRESS' | 'COMPLETED' | 'CLOSED'
+
+/**
+ * One shape for every ticket a student can raise — a Student Services
+ * document request, a Transport route change, a Hostel leave request. Each
+ * domain scopes its own list/create endpoint; none gets its own type,
+ * because the frames themselves are the same form wearing a different
+ * category list.
+ */
+export type ServiceRequest = {
+  id: Id
+  /** `SR-2025-0012` — shown everywhere the id is, never the raw id. */
+  reference: string
+  category: string
+  subject: string
+  description: string
+  priority: RequestPriority
+  status: RequestStatus
+  assignedDept: string | null
+  agent: Instructor | null
+  submittedAt: ISODateTime
+}
+
+export type CreateServiceRequestRequest = {
+  category: string
+  priority: RequestPriority
+  subject: string
+  description: string
+}
+
+export type ServiceRequestsResponse = { requests: ServiceRequest[] }
+
+// ===========================================================================
+// Library
+// ===========================================================================
+
+export type BookAvailability = 'AVAILABLE' | 'DIGITAL' | 'UNAVAILABLE'
+
+export type LibraryBook = {
+  id: Id
+  title: string
+  author: string
+  category: string
+  isbn: string
+  /** `Shelf C4, Section 2` or `E-Library Access`. Null when unavailable. */
+  location: string | null
+  availability: BookAvailability
+  availableCount: number
+}
+
+/** GET /api/student/library/?q=&category= */
+export type LibraryOverviewResponse = {
+  stats: { totalBooks: number; availableNow: number; myBorrowedCount: number; overdueCount: number }
+  catalog: LibraryBook[]
+}
+
+export type LoanStatus = 'ACTIVE' | 'RETURNED' | 'LATE_RETURN'
+
+export type BookLoan = {
+  id: Id
+  book: { title: string; author: string; isbn: string }
+  borrowedAt: ISODate
+  dueAt: ISODate
+  returnedAt: ISODate | null
+  status: LoanStatus
+  fine: Money | null
+  shelfLocation: string | null
+}
+
+/** GET /api/student/library/borrowed/ */
+export type MyBorrowedBooksResponse = { activeLoans: BookLoan[] }
+
+/** GET /api/student/library/history/ */
+export type LibraryHistoryResponse = { outstandingFines: Money; loans: BookLoan[] }
+
+/** POST /api/student/library/borrowed/{loanId}/renew/ */
+export type RenewLoanResult = { loan: BookLoan; summary: string }
+
+export type BookAcquisitionRequest = {
+  title: string
+  author: string
+  category: string
+  isbn?: string
+  publisher?: string
+  publicationYear?: string
+  reason: string
+}
+
+export type LibraryFeedbackRequest = { topic: string; subject: string; description: string }
+
+// ===========================================================================
+// Student Services
+// ===========================================================================
+
+/** GET /api/student/services/ */
+export type StudentServicesResponse = {
+  counts: { total: number; inProgress: number; completed: number; closed: number }
+  recent: ServiceRequest[]
+}
+
+// ===========================================================================
+// Transport
+// ===========================================================================
+
+export type RouteStopKind = 'START' | 'STOP' | 'DESTINATION'
+
+export type RouteStop = { name: string; time: TimeOfDay; kind: RouteStopKind }
+
+/** GET /api/student/transport/ */
+export type TransportOverviewResponse = {
+  route: { name: string; pickupPoint: string }
+  fee: { monthly: Money; dueDate: ISODate; paid: Money; due: Money }
+  attendancePercent: number
+  vehicle: { number: string; driver: string; assistant: string; pickupTime: TimeOfDay; returnTime: TimeOfDay }
+  stops: RouteStop[]
+  /** When the stop timeline was last confirmed — stands in for live GPS, which this mock has no vehicle to back. */
+  routeUpdatedAt: ISODateTime
+}
+
+export type TransportPaymentStatus = 'PAID' | 'DUE' | 'OVERDUE'
+
+export type TransportPayment = {
+  id: Id
+  /** `May 2026` */
+  month: string
+  amount: Money
+  paidAt: ISODateTime | null
+  status: TransportPaymentStatus
+}
+
+/** GET /api/student/transport/payments/ */
+export type TransportPaymentHistoryResponse = { payments: TransportPayment[] }
+
+// ===========================================================================
+// Hostel
+// ===========================================================================
+
+export type Roommate = { id: Id; name: string; bedNo: string; department: string; phone: string | null; avatarUrl: string | null }
+
+/** GET /api/student/hostel/ — also backs the Room Details screen. */
+export type HostelOverviewResponse = {
+  hostel: { name: string; roomNo: string; roomType: string; floor: string; bedNo: string; photoUrl: string | null; campus: string | null }
+  checkInDate: ISODate
+  status: 'ACTIVE' | 'INACTIVE'
+  warden: { name: string; phone: string }
+  fee: { hostelFee: Money; messFee: Money; totalPaid: Money; due: Money }
+  roommates: Roommate[]
+  notices: { id: Id; title: string; at: ISODateTime }[]
+  contact: { emergencyPhone: string; email: string; office: string }
+}
+
+export type HostelFeeKind = 'HOSTEL_FEE' | 'MESS_FEE'
+export type HostelPaymentStatus = 'PAID' | 'DUE' | 'OVERDUE'
+
+export type HostelPayment = {
+  id: Id
+  kind: HostelFeeKind
+  amount: Money
+  dueAt: ISODate
+  paidAt: ISODateTime | null
+  status: HostelPaymentStatus
+}
+
+/** GET /api/student/hostel/ledger/ */
+export type HostelLedgerResponse = { payments: HostelPayment[] }

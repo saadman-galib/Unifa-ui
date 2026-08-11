@@ -62,7 +62,12 @@ import type {
   LmsCoursesResponse,
   LmsOverviewResponse,
   MaterialsResponse,
+  HostelLedgerResponse,
+  HostelOverviewResponse,
+  LibraryHistoryResponse,
+  LibraryOverviewResponse,
   Me,
+  MyBorrowedBooksResponse,
   MyCoursesResponse,
   Note,
   PaymentHistoryResponse,
@@ -76,10 +81,13 @@ import type {
   RevaluationResponse,
   SecurityResponse,
   SemesterRegistrationResponse,
+  ServiceRequest,
   StudentDashboardResponse,
   StudyPlannerOptionsResponse,
   StudyPlanResponse,
   Term,
+  TransportOverviewResponse,
+  TransportPaymentHistoryResponse,
   UpcomingExamsResponse,
 } from '../src/types/index.ts'
 
@@ -1224,5 +1232,119 @@ export const SECURITY: SecurityResponse = {
   sessions: [
     { id: 'sess-1', deviceLabel: 'MacBook Pro', location: 'San Francisco, CA · 192.168.1.1', lastSeenAt: inDays(0), isCurrent: true },
     { id: 'sess-2', deviceLabel: 'iPhone 15', location: 'San Jose, CA · 10.0.0.45', lastSeenAt: inDays(0), isCurrent: false },
+  ],
+}
+
+// ===========================================================================
+// Library
+// ===========================================================================
+
+export const LIBRARY_CATALOG_RESPONSE: LibraryOverviewResponse = {
+  stats: { totalBooks: 42500, availableNow: 38100, myBorrowedCount: 3, overdueCount: 0 },
+  catalog: [
+    { id: 'bk-1', title: 'Introduction to Algorithms', author: 'Thomas H. Cormen', category: 'Computer Science', isbn: '978-0262033848', location: 'Shelf C4, Section 2', availability: 'AVAILABLE', availableCount: 5 },
+    { id: 'bk-2', title: 'Operating System Concepts', author: 'Abraham Silberschatz', category: 'Computer Science', isbn: '978-1118063330', location: 'Shelf C2, Section 1', availability: 'AVAILABLE', availableCount: 2 },
+    { id: 'bk-3', title: 'Clean Code: A Handbook', author: 'Robert C. Martin', category: 'Software Engineering', isbn: '978-0132350884', location: 'E-Library Access', availability: 'DIGITAL', availableCount: 0 },
+    { id: 'bk-4', title: 'Computer Networks', author: 'Andrew S. Tanenbaum', category: 'Computer Science', isbn: '978-0132126953', location: 'Shelf C3, Section 4', availability: 'AVAILABLE', availableCount: 3 },
+    { id: 'bk-5', title: 'Advanced Quantum Mechanics', author: 'J.J. Sakurai', category: 'Physics', isbn: '978-0201067101', location: null, availability: 'UNAVAILABLE', availableCount: 0 },
+  ],
+}
+
+export const LIBRARY_BORROWED_RESPONSE: MyBorrowedBooksResponse = {
+  activeLoans: [
+    { id: 'loan-1', book: { title: 'Advanced Quantum Mechanics', author: 'J.J. Sakurai', isbn: '978-0201067101' }, borrowedAt: dayIn(-11), dueAt: dayIn(3), returnedAt: null, status: 'ACTIVE', fine: null, shelfLocation: 'CS-LIB-204' },
+    { id: 'loan-2', book: { title: 'The Design of Everyday Things', author: 'Don Norman', isbn: '978-1465050659' }, borrowedAt: dayIn(-20), dueAt: dayIn(10), returnedAt: null, status: 'ACTIVE', fine: null, shelfLocation: 'C2, Section 1' },
+    { id: 'loan-3', book: { title: 'Computer Networks', author: 'Andrew S. Tanenbaum', isbn: '978-0132126953' }, borrowedAt: dayIn(-5), dueAt: dayIn(23), returnedAt: null, status: 'ACTIVE', fine: null, shelfLocation: 'C3, Section 4' },
+  ],
+}
+
+export const LIBRARY_HISTORY_RESPONSE: LibraryHistoryResponse = {
+  outstandingFines: '50.00',
+  loans: [
+    { id: 'loan-4', book: { title: 'Data Structures & Algorithms', author: 'Cormen, Leiserson, Rivest', isbn: '978-0262033848' }, borrowedAt: '2025-10-12', dueAt: '2025-11-02', returnedAt: '2025-11-08', status: 'LATE_RETURN', fine: '50.00', shelfLocation: null },
+    { id: 'loan-2', book: { title: 'The Design of Everyday Things', author: 'Don Norman', isbn: '978-1465050659' }, borrowedAt: dayIn(-20), dueAt: dayIn(10), returnedAt: null, status: 'ACTIVE', fine: null, shelfLocation: null },
+    { id: 'loan-5', book: { title: 'Linear Algebra Done Right', author: 'Sheldon Axler', isbn: '978-3319110790' }, borrowedAt: '2025-09-01', dueAt: '2025-09-14', returnedAt: '2025-09-14', status: 'RETURNED', fine: null, shelfLocation: null },
+  ],
+}
+
+// ===========================================================================
+// Student Services
+// ===========================================================================
+
+export const SERVICE_REQUESTS: ServiceRequest[] = [
+  { id: 'sr-1', reference: 'SR-2025-0089', category: 'Academic', subject: 'Official Transcript Request', description: 'Requesting an official transcript for an internship application.', priority: 'MEDIUM', status: 'IN_PROGRESS', assignedDept: 'Office of the Registrar', agent: { id: 'fac-9', name: 'Dr. Alan Vance', title: 'Registrar Officer', email: 'a.vance@unigpt.edu', avatarUrl: null, officeRoom: null }, submittedAt: '2024-10-24T09:00:00.000Z' },
+  { id: 'sr-2', reference: 'SR-2025-0072', category: 'Financial', subject: 'Tuition Installment Plan', description: 'Requesting a 3-installment plan for Spring 2026 tuition.', priority: 'HIGH', status: 'COMPLETED', assignedDept: 'Finance Office', agent: { id: 'fac-10', name: 'Nusrat Jahan', title: 'Finance Officer', email: 'n.jahan@unigpt.edu', avatarUrl: null, officeRoom: null }, submittedAt: '2024-10-18T09:00:00.000Z' },
+  { id: 'sr-3', reference: 'SR-2025-0065', category: 'Housing', subject: 'Room Change Request (North Hall)', description: 'Requesting a room transfer closer to the science building.', priority: 'MEDIUM', status: 'IN_PROGRESS', assignedDept: 'Housing Office', agent: null, submittedAt: '2024-10-12T09:00:00.000Z' },
+  { id: 'sr-4', reference: 'SR-2025-0041', category: 'Academic', subject: 'Course Prerequisite Override (CS301)', description: 'Requesting an override for CS301 based on equivalent coursework.', priority: 'HIGH', status: 'COMPLETED', assignedDept: 'Department of CSE', agent: null, submittedAt: '2024-09-28T09:00:00.000Z' },
+  { id: 'sr-5', reference: 'SR-2024-0899', category: 'General', subject: 'Student ID Replacement', description: 'Lost student ID card, requesting a replacement.', priority: 'LOW', status: 'CLOSED', assignedDept: 'Office of the Registrar', agent: null, submittedAt: '2024-09-15T09:00:00.000Z' },
+]
+
+// Counts and "recent" are derived live from `state.serviceRequests` in
+// server.ts, not served statically — a created request should move both.
+
+// ===========================================================================
+// Transport
+// ===========================================================================
+
+export const TRANSPORT_REQUESTS: ServiceRequest[] = [
+  { id: 'tr-1', reference: 'SR-2025-0031', category: 'Route Change', subject: 'Transfer from Green Line to Red Line', description: 'I have recently moved to a new apartment closer to the North Campus. The Red Line at Oak Street Station is now the most convenient route.', priority: 'MEDIUM', status: 'IN_PROGRESS', assignedDept: 'Transport Office', agent: null, submittedAt: dayIn(-2) + 'T09:00:00.000Z' },
+]
+
+export const TRANSPORT_RESPONSE: TransportOverviewResponse = {
+  route: { name: 'Green Line', pickupPoint: 'Dhanmondi 15' },
+  fee: { monthly: '1200.00', dueDate: dayIn(14), paid: '1200.00', due: '0.00' },
+  attendancePercent: 90,
+  vehicle: { number: 'DM-KHA-11-2345', driver: 'Md. Rahman', assistant: 'Mr. Sohel', pickupTime: '07:30', returnTime: '15:30' },
+  stops: [
+    { name: 'Dhanmondi 15', time: '07:30', kind: 'START' },
+    { name: 'Jigatola', time: '07:40', kind: 'STOP' },
+    { name: 'City College', time: '07:55', kind: 'STOP' },
+    { name: 'Science Lab', time: '08:05', kind: 'STOP' },
+    { name: 'Shahbagh', time: '08:20', kind: 'STOP' },
+    { name: 'UniGPT University', time: '08:45', kind: 'DESTINATION' },
+  ],
+  routeUpdatedAt: inDays(0),
+}
+
+export const TRANSPORT_PAYMENTS_RESPONSE: TransportPaymentHistoryResponse = {
+  payments: [
+    { id: 'tp-1', month: 'May 2026', amount: '1200.00', paidAt: null, status: 'DUE' },
+    { id: 'tp-2', month: 'April 2026', amount: '1200.00', paidAt: dayIn(-16) + 'T09:00:00.000Z', status: 'PAID' },
+    { id: 'tp-3', month: 'March 2026', amount: '1200.00', paidAt: dayIn(-47) + 'T09:00:00.000Z', status: 'PAID' },
+    { id: 'tp-4', month: 'February 2026', amount: '1200.00', paidAt: dayIn(-75) + 'T09:00:00.000Z', status: 'PAID' },
+  ],
+}
+
+// ===========================================================================
+// Hostel
+// ===========================================================================
+
+export const HOSTEL_REQUESTS: ServiceRequest[] = [
+  { id: 'hr-1', reference: 'SR-2025-0102', category: 'Leave Request', subject: 'Weekend leave — home visit', description: 'Requesting leave from Friday to Sunday to visit family.', priority: 'LOW', status: 'COMPLETED', assignedDept: 'Hostel Office', agent: null, submittedAt: dayIn(-9) + 'T09:00:00.000Z' },
+]
+
+export const HOSTEL_RESPONSE: HostelOverviewResponse = {
+  hostel: { name: 'Sheikh Mujibur Hall', roomNo: 'A-305', roomType: 'Triple Sharing', floor: '3rd Floor', bedNo: '02', photoUrl: null, campus: 'North Campus' },
+  checkInDate: '2025-01-15',
+  status: 'ACTIVE',
+  warden: { name: 'Dr. Md. Kamal Hossain', phone: '+880 1712-345678' },
+  fee: { hostelFee: '12000.00', messFee: '3000.00', totalPaid: '15000.00', due: '0.00' },
+  roommates: [
+    { id: 'rm-1', name: 'Rafi Hasan', bedNo: '01', department: 'CSE Dept', phone: null, avatarUrl: null },
+    { id: 'rm-2', name: 'Siam Ahmed', bedNo: '03', department: 'EEE Dept', phone: null, avatarUrl: null },
+    { id: 'rm-3', name: 'Tahmid Hasan', bedNo: '04', department: 'BBA Dept', phone: null, avatarUrl: null },
+  ],
+  notices: [
+    { id: 'hn-1', title: 'Electricity Maintenance', at: dayIn(-3) + 'T09:00:00.000Z' },
+    { id: 'hn-2', title: 'Guest Policy Update', at: dayIn(-6) + 'T09:00:00.000Z' },
+  ],
+  contact: { emergencyPhone: '+880 1911-000000', email: 'hostel@unigpt.edu', office: 'Provost Office, Ground Floor, Sheikh Mujibur Hall' },
+}
+
+export const HOSTEL_LEDGER_RESPONSE: HostelLedgerResponse = {
+  payments: [
+    { id: 'hp-1', kind: 'HOSTEL_FEE', amount: '12000.00', dueAt: dayIn(-30), paidAt: dayIn(-32) + 'T09:00:00.000Z', status: 'PAID' },
+    { id: 'hp-2', kind: 'MESS_FEE', amount: '3000.00', dueAt: dayIn(-30), paidAt: dayIn(-32) + 'T09:00:00.000Z', status: 'PAID' },
+    { id: 'hp-3', kind: 'MESS_FEE', amount: '3000.00', dueAt: dayIn(1), paidAt: null, status: 'DUE' },
   ],
 }

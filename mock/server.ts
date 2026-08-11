@@ -27,6 +27,8 @@ import type {
   DropAddRequest,
   FieldError,
   ForumReply,
+  BookLoan,
+  CreateServiceRequestRequest,
   Meta,
   Note,
   PagePagination,
@@ -38,6 +40,7 @@ import type {
   QuizAttemptResult,
   RevaluationRequestRow,
   Role,
+  ServiceRequest,
   UpdateNoteRequest,
 } from '../src/types/index.ts'
 import * as D from './data.ts'
@@ -236,6 +239,13 @@ const state = {
   paymentKeys: {} as Record<string, string>,
   lectureProgress: {} as Record<string, { positionSeconds: number; watched: boolean }>,
   profile: { ...D.PROFILE } as ProfileResponse,
+  libraryLoans: [...D.LIBRARY_BORROWED_RESPONSE.activeLoans] as BookLoan[],
+  libraryFines: D.LIBRARY_HISTORY_RESPONSE.outstandingFines,
+  serviceRequests: [...D.SERVICE_REQUESTS] as ServiceRequest[],
+  transportRequests: [...D.TRANSPORT_REQUESTS] as ServiceRequest[],
+  transportPayments: D.TRANSPORT_PAYMENTS_RESPONSE.payments.map((p) => ({ ...p })),
+  hostelRequests: [...D.HOSTEL_REQUESTS] as ServiceRequest[],
+  hostelPayments: D.HOSTEL_LEDGER_RESPONSE.payments.map((p) => ({ ...p })),
 }
 
 let seq = 1000
@@ -893,6 +903,183 @@ POST('/api/student/profile/security/password/', async ({ req }) => {
 
 POST('/api/student/profile/security/sessions/revoke-others/', ({ req }) => {
   return json({ summary: 'Signed out of all other sessions.', at: new Date().toISOString() }, 200, req)
+})
+
+// ===========================================================================
+// Library
+// ===========================================================================
+
+GET('/api/student/library/', ({ req, query }) => {
+  const q = (query.get('q') ?? '').toLowerCase()
+  const category = query.get('category')
+  const catalog = D.LIBRARY_CATALOG_RESPONSE.catalog.filter(
+    (b) =>
+      (!q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q) || b.isbn.includes(q)) &&
+      (!category || category === 'ALL' || b.category === category),
+  )
+  return json(
+    { stats: { ...D.LIBRARY_CATALOG_RESPONSE.stats, myBorrowedCount: state.libraryLoans.length }, catalog },
+    200,
+    req,
+  )
+})
+
+GET('/api/student/library/borrowed/', ({ req }) => json({ activeLoans: state.libraryLoans }, 200, req))
+
+POST('/api/student/library/borrowed/:loanId/renew/', ({ req, params }) => {
+  const loan = state.libraryLoans.find((l) => l.id === params.loanId)
+  if (!loan) return notFound(req)
+  loan.dueAt = D.dayIn(7)
+  return json({ loan, summary: `Renewed — now due ${loan.dueAt}.` }, 200, req)
+})
+
+GET('/api/student/library/history/', ({ req }) =>
+  json({ outstandingFines: state.libraryFines, loans: D.LIBRARY_HISTORY_RESPONSE.loans }, 200, req),
+)
+
+POST('/api/student/library/fines/pay/', ({ req }) => {
+  const paid = state.libraryFines
+  state.libraryFines = '0.00'
+  return json({ summary: `Paid ${paid} in outstanding fines.`, at: new Date().toISOString() }, 200, req)
+})
+
+POST('/api/student/library/acquisition-requests/', async ({ req }) => {
+  const input = await body<{ title?: string; author?: string; category?: string; reason?: string }>(req)
+  if (!input.title?.trim()) return fail(400, { title: ['This field may not be blank.'] }, req)
+  if (!input.reason?.trim()) return fail(400, { reason: ['This field may not be blank.'] }, req)
+  return json({ summary: 'Acquisition request submitted for review.', at: new Date().toISOString() }, 201, req)
+})
+
+POST('/api/student/library/feedback/', async ({ req }) => {
+  const input = await body<{ subject?: string; description?: string }>(req)
+  if (!input.subject?.trim()) return fail(400, { subject: ['This field may not be blank.'] }, req)
+  return json({ summary: 'Feedback ticket submitted.', at: new Date().toISOString() }, 201, req)
+})
+
+// ===========================================================================
+// Student Services
+// ===========================================================================
+
+GET('/api/student/services/', ({ req }) =>
+  json(
+    {
+      counts: {
+        total: state.serviceRequests.length,
+        inProgress: state.serviceRequests.filter((r) => r.status === 'IN_PROGRESS').length,
+        completed: state.serviceRequests.filter((r) => r.status === 'COMPLETED').length,
+        closed: state.serviceRequests.filter((r) => r.status === 'CLOSED').length,
+      },
+      recent: state.serviceRequests.slice(0, 5),
+    },
+    200,
+    req,
+  ),
+)
+
+GET('/api/student/services/requests/', ({ req, query }) => {
+  const status = query.get('status')
+  const rows = state.serviceRequests.filter((r) => !status || status === 'ALL' || r.status === status)
+  return json({ requests: rows }, 200, req)
+})
+
+GET('/api/student/services/requests/:id/', ({ req, params }) => {
+  const found = state.serviceRequests.find((r) => r.id === params.id || r.reference === params.id)
+  return found ? json(found, 200, req) : notFound(req)
+})
+
+POST('/api/student/services/requests/', async ({ req }) => {
+  const input = await body<CreateServiceRequestRequest>(req)
+  if (!input.subject?.trim()) return fail(400, { subject: ['This field may not be blank.'] }, req)
+  if (!input.description?.trim()) return fail(400, { description: ['This field may not be blank.'] }, req)
+  const created: ServiceRequest = {
+    id: nextId('sr'),
+    reference: `SR-2026-${String(state.serviceRequests.length + 1).padStart(4, '0')}`,
+    category: input.category,
+    subject: input.subject,
+    description: input.description,
+    priority: input.priority,
+    status: 'SUBMITTED',
+    assignedDept: null,
+    agent: null,
+    submittedAt: new Date().toISOString(),
+  }
+  state.serviceRequests = [created, ...state.serviceRequests]
+  return json(created, 201, req)
+})
+
+// ===========================================================================
+// Transport
+// ===========================================================================
+
+serve('/api/student/transport/', D.TRANSPORT_RESPONSE)
+
+GET('/api/student/transport/payments/', ({ req }) => json({ payments: state.transportPayments }, 200, req))
+
+POST('/api/student/transport/payments/pay/', ({ req }) => {
+  const due = state.transportPayments.find((p) => p.status !== 'PAID')
+  if (!due) return fail(409, { detail: 'No outstanding transport payment.' }, req)
+  due.status = 'PAID'
+  due.paidAt = new Date().toISOString()
+  return json({ summary: `Paid ${due.month} transport fee.`, at: due.paidAt }, 200, req)
+})
+
+GET('/api/student/transport/requests/', ({ req }) => json({ requests: state.transportRequests }, 200, req))
+
+POST('/api/student/transport/requests/', async ({ req }) => {
+  const input = await body<CreateServiceRequestRequest>(req)
+  if (!input.subject?.trim()) return fail(400, { subject: ['This field may not be blank.'] }, req)
+  const created: ServiceRequest = {
+    id: nextId('tr'),
+    reference: `SR-2026-${String(state.transportRequests.length + 100).padStart(4, '0')}`,
+    category: input.category,
+    subject: input.subject,
+    description: input.description,
+    priority: input.priority,
+    status: 'SUBMITTED',
+    assignedDept: 'Transport Office',
+    agent: null,
+    submittedAt: new Date().toISOString(),
+  }
+  state.transportRequests = [created, ...state.transportRequests]
+  return json(created, 201, req)
+})
+
+// ===========================================================================
+// Hostel
+// ===========================================================================
+
+serve('/api/student/hostel/', D.HOSTEL_RESPONSE)
+
+GET('/api/student/hostel/ledger/', ({ req }) => json({ payments: state.hostelPayments }, 200, req))
+
+POST('/api/student/hostel/ledger/pay/', async ({ req }) => {
+  const { paymentId } = await body<{ paymentId?: string }>(req)
+  const due = state.hostelPayments.find((p) => p.id === paymentId && p.status !== 'PAID')
+  if (!due) return fail(409, { detail: 'That payment is not outstanding.' }, req)
+  due.status = 'PAID'
+  due.paidAt = new Date().toISOString()
+  return json({ summary: `Paid ${due.kind === 'MESS_FEE' ? 'mess fee' : 'hostel fee'}.`, at: due.paidAt }, 200, req)
+})
+
+GET('/api/student/hostel/requests/', ({ req }) => json({ requests: state.hostelRequests }, 200, req))
+
+POST('/api/student/hostel/requests/', async ({ req }) => {
+  const input = await body<CreateServiceRequestRequest>(req)
+  if (!input.subject?.trim()) return fail(400, { subject: ['This field may not be blank.'] }, req)
+  const created: ServiceRequest = {
+    id: nextId('hr'),
+    reference: `SR-2026-${String(state.hostelRequests.length + 200).padStart(4, '0')}`,
+    category: input.category,
+    subject: input.subject,
+    description: input.description,
+    priority: input.priority,
+    status: 'SUBMITTED',
+    assignedDept: 'Hostel Office',
+    agent: null,
+    submittedAt: new Date().toISOString(),
+  }
+  state.hostelRequests = [created, ...state.hostelRequests]
+  return json(created, 201, req)
 })
 
 // ===========================================================================
