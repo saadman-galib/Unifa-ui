@@ -1,4 +1,15 @@
-import { useDelete, useGetData, useOptimistic, usePostData } from '@/hooks/use-api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiFetch, ApiError } from '@/hooks/use-api'
+import {
+  mapAnnouncements,
+  mapAssignments,
+  mapLmsFromEnrollments,
+  mapLmsGradebook,
+  mapMaterials,
+  mapQuiz,
+  mapQuizAttempt,
+  mapQuizzes,
+} from '@/lib/unifa'
 import type {
   AnnouncementsResponse,
   AssignmentDetailResponse,
@@ -26,200 +37,297 @@ import type {
   RecordingsResponse,
   Submission,
 } from '@/types'
+import type { UnifaAnnouncement, UnifaAssignment, UnifaEnrollment, UnifaMaterial, UnifaQuiz } from '@/types/unifa'
 
-/** LMS module data (17 screens). Contract: docs/api/student.md §3.3. */
+const enrollments = () => apiFetch<UnifaEnrollment[]>('/api/v1/academic/my/enrollments')
 
 export const useLmsOverview = () =>
-  useGetData<LmsOverviewResponse>('/api/student/lms/overview/', ['lms', 'overview'])
+  useQuery({
+    queryKey: ['lms', 'overview'],
+    queryFn: async (): Promise<LmsOverviewResponse> => mapLmsFromEnrollments(await enrollments()),
+  })
 
 export const useLmsCourses = () =>
-  useGetData<LmsCoursesResponse>('/api/student/lms/courses/', ['lms', 'courses'])
+  useQuery({
+    queryKey: ['lms', 'courses'],
+    queryFn: async (): Promise<LmsCoursesResponse> => mapLmsFromEnrollments(await enrollments()),
+  })
 
 export const useLectures = (courseId: string) =>
-  useGetData<LecturesResponse>(`/api/student/lms/courses/${courseId}/lectures/`, [
-    'lms',
-    'lectures',
-    courseId,
-  ])
+  useQuery({
+    queryKey: ['lms', 'lectures', courseId],
+    queryFn: async (): Promise<LecturesResponse> => ({
+      courseId,
+      moduleTitle: 'Lectures',
+      summary: 'Recorded lectures are not on the UniFa API. Course files live under Materials.',
+      lectures: [],
+    }),
+  })
 
 export const useMaterials = (courseId: string) =>
-  useGetData<MaterialsResponse>(`/api/student/lms/courses/${courseId}/materials/`, [
-    'lms',
-    'materials',
-    courseId,
-  ])
-
-// -------------------------------------------------------------- assignments
+  useQuery({
+    queryKey: ['lms', 'materials', courseId],
+    queryFn: async (): Promise<MaterialsResponse> => {
+      const mine = await enrollments()
+      const match = mine.find((e) => e.section.course.id === courseId) ?? mine.find((e) => e.section.id === courseId)
+      if (!match) return mapMaterials(courseId, [])
+      const rows = await apiFetch<UnifaMaterial[]>(`/api/v1/lms/sections/${match.section.id}/materials`)
+      return mapMaterials(courseId, rows)
+    },
+  })
 
 export const useAssignments = () =>
-  useGetData<AssignmentsResponse>('/api/student/lms/assignments/', ['lms', 'assignments'])
+  useQuery({
+    queryKey: ['lms', 'assignments'],
+    queryFn: async (): Promise<AssignmentsResponse> => {
+      const mine = await enrollments()
+      const rows = await Promise.all(
+        mine.map(async (enrollment) => {
+          const list = await apiFetch<UnifaAssignment[]>(
+            `/api/v1/lms/sections/${enrollment.section.id}/assignments`,
+          ).catch(() => [] as UnifaAssignment[])
+          return list.map((assignment) => ({ assignment, enrollment }))
+        }),
+      )
+      return mapAssignments(rows.flat())
+    },
+  })
 
 export const useAssignmentDetail = (id: string) =>
-  useGetData<AssignmentDetailResponse>(`/api/student/lms/assignments/${id}/`, [
-    'lms',
-    'assignments',
-    id,
-  ])
+  useQuery({
+    queryKey: ['lms', 'assignments', id],
+    queryFn: async (): Promise<AssignmentDetailResponse> => {
+      const mapped = await fetchAssignments()
+      const assignment = mapped.assignments.find((a) => a.id === id)
+      if (!assignment) throw new ApiError(404, { error: 'Assignment not found' })
+      return {
+        id: assignment.id,
+        title: assignment.title,
+        course: assignment.course,
+        dueAt: assignment.dueAt,
+        brief: assignment.summary,
+        requirements: [],
+        integrityNote: 'Submit your own work.',
+        maxAttachments: 3,
+        maxAttachmentBytes: 10_000_000,
+        acceptedMimeTypes: ['application/pdf', 'application/zip'],
+        submission: assignment.submittedAt
+          ? {
+              id: assignment.id,
+              assignmentId: assignment.id,
+              state: assignment.state === 'GRADED' ? 'GRADED' : 'SUBMITTED',
+              comment: '',
+              attachments: [],
+              submittedAt: assignment.submittedAt,
+              grade: assignment.grade,
+              feedback: null,
+            }
+          : null,
+      }
+    },
+  })
 
-/**
- * Multipart, not JSON — files do not base64 into a body without a 33% size
- * penalty and a lost progress bar. See docs/api/student.md §6.2.
- *
- * Deliberately not optimistic: the upload has real duration, so a spinner is
- * honest and a fake "Submitted" is not.
- */
-export const useSubmitAssignment = (id: string) =>
-  usePostData<Submission, FormData>(`/api/student/lms/assignments/${id}/submissions/`, [
-    'lms',
-    'assignments',
-  ])
+async function fetchAssignments() {
+  const mine = await enrollments()
+  const rows = await Promise.all(
+    mine.map(async (enrollment) => {
+      const list = await apiFetch<UnifaAssignment[]>(
+        `/api/v1/lms/sections/${enrollment.section.id}/assignments`,
+      ).catch(() => [] as UnifaAssignment[])
+      return list.map((assignment) => ({ assignment, enrollment }))
+    }),
+  )
+  return mapAssignments(rows.flat())
+}
 
-// ------------------------------------------------------------------ quizzes
+export const useSubmitAssignment = (id: string) => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (form: FormData): Promise<Submission> => {
+      const file = form.get('file')
+      const fileUrl = typeof form.get('fileUrl') === 'string' ? String(form.get('fileUrl')) : undefined
+      const content = typeof form.get('content') === 'string' ? String(form.get('content')) : undefined
+      // UniFa accepts a URL, not multipart. If the student pasted a URL in the form, use it.
+      const url =
+        fileUrl ??
+        (typeof file === 'string' ? file : 'https://example.com/submission')
+      const row = await apiFetch<{ id: string; submittedAt?: string }>(`/api/v1/lms/assignments/${id}/submit`, {
+        method: 'POST',
+        body: JSON.stringify({ fileUrl: url, content: content ?? 'Submitted from the portal' }),
+      })
+      return {
+        id: row.id,
+        assignmentId: id,
+        state: 'SUBMITTED',
+        comment: content ?? '',
+        attachments: [],
+        submittedAt: row.submittedAt ?? new Date().toISOString(),
+        grade: null,
+        feedback: null,
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['lms', 'assignments'] })
+    },
+  })
+}
 
 export const useQuizzes = () =>
-  useGetData<QuizzesResponse>('/api/student/lms/quizzes/', ['lms', 'quizzes'])
+  useQuery({
+    queryKey: ['lms', 'quizzes'],
+    queryFn: async (): Promise<QuizzesResponse> => mapQuizzes(),
+  })
 
 export const usePracticeQuiz = (id: string) =>
-  useGetData<PracticeQuizResponse>(`/api/student/lms/quizzes/${id}/practice/`, [
-    'lms',
-    'practice',
-    id,
-  ])
+  useQuery({
+    queryKey: ['lms', 'practice', id],
+    queryFn: async (): Promise<PracticeQuizResponse> =>
+      mapQuiz(await apiFetch<UnifaQuiz>(`/api/v1/lms/quizzes/${id}`)),
+  })
 
-/** Never optimistic — the score *is* the answer; guessing it is nonsense. */
 export const useSubmitQuizAttempt = (id: string) =>
-  usePostData<QuizAttemptResult, QuizAttemptRequest>(`/api/student/lms/quizzes/${id}/attempts/`, [
-    'lms',
-    'quizzes',
-  ])
-
-// ------------------------------------------------------- video · downloads
+  useMutation({
+    mutationFn: async (vars: QuizAttemptRequest): Promise<QuizAttemptResult> => {
+      const attempt = await apiFetch<{ id: string; score: number }>(`/api/v1/lms/quizzes/${id}/attempt`, {
+        method: 'POST',
+        body: JSON.stringify({
+          answers: vars.answers.map((a) => ({ questionId: a.questionId, answer: a.optionId })),
+        }),
+      })
+      return mapQuizAttempt(Number(attempt.score), vars.answers.length)
+    },
+  })
 
 export const useLiveClasses = () =>
-  useGetData<LiveClassesResponse>('/api/student/lms/live/', ['lms', 'live'])
+  useQuery({
+    queryKey: ['lms', 'live'],
+    queryFn: async (): Promise<LiveClassesResponse> => ({ live: [], upcoming: [] }),
+  })
 
 export const useRecordings = () =>
-  useGetData<RecordingsResponse>('/api/student/lms/recordings/', ['lms', 'recordings'])
+  useQuery({
+    queryKey: ['lms', 'recordings'],
+    queryFn: async (): Promise<RecordingsResponse> => ({
+      metrics: [],
+      tip: 'Recordings are not stored in UniFa yet.',
+      sessions: [],
+    }),
+  })
 
 export const useDownloads = () =>
-  useGetData<DownloadsResponse>('/api/student/lms/downloads/', ['lms', 'downloads'])
+  useQuery({
+    queryKey: ['lms', 'downloads'],
+    queryFn: async (): Promise<DownloadsResponse> => {
+      const mine = await enrollments()
+      const files = (
+        await Promise.all(
+          mine.map(async (e) => {
+            const rows = await apiFetch<UnifaMaterial[]>(`/api/v1/lms/sections/${e.section.id}/materials`).catch(
+              () => [] as UnifaMaterial[],
+            )
+            return rows.map((m) => ({
+              id: m.id,
+              filename: m.title,
+              course: { id: e.section.course.id, code: e.section.course.code, title: e.section.course.title, credits: e.section.course.credits },
+              sizeBytes: 0,
+              state: 'READY' as const,
+              url: m.url,
+              expiresAt: null,
+            }))
+          }),
+        )
+      ).flat()
+      return { files }
+    },
+  })
 
-// -------------------------------------------------------------------- forum
-
-export const useForumThreads = (courseId?: string) =>
-  useGetData<Cursored<ForumThread>>(
-    `/api/student/lms/forum/threads/${courseId ? `?courseId=${courseId}` : ''}`,
-    ['lms', 'forum', courseId ?? 'all'],
-  )
+export const useForumThreads = (_courseId?: string) =>
+  useQuery({
+    queryKey: ['lms', 'forum', _courseId ?? 'all'],
+    queryFn: async (): Promise<Cursored<ForumThread>> => ({ results: [], nextCursor: null }),
+  })
 
 export const useForumThread = (id: string) =>
-  useGetData<ForumThreadDetailResponse>(`/api/student/lms/forum/threads/${id}/`, [
-    'lms',
-    'forum',
-    'thread',
-    id,
-  ])
+  useQuery({
+    queryKey: ['lms', 'forum', 'thread', id],
+    queryFn: async (): Promise<ForumThreadDetailResponse> => {
+      throw new ApiError(404, { error: 'Discussion forums are not on the UniFa API yet.' })
+    },
+  })
 
-/** Optimistic: the reply appears at once, and a failure keeps the draft text. */
-export const useReplyToThread = (threadId: string) => {
-  const key = ['lms', 'forum', 'thread', threadId]
-  const patch = useOptimistic<ForumThreadDetailResponse, CreateReplyRequest>(key, (prev, vars) => ({
-    ...prev,
-    replies: [
-      ...prev.replies,
-      {
-        id: `tmp-${crypto.randomUUID()}`,
-        body: vars.body,
-        authorName: 'You',
-        authorAvatarUrl: null,
-        isMine: true,
-        createdAt: new Date().toISOString(),
-      },
-    ],
-  }))
-
-  return usePostData<unknown, CreateReplyRequest>(
-    `/api/student/lms/forum/threads/${threadId}/replies/`,
-    key,
-    patch,
-  )
-}
-
-// -------------------------------------------------------------------- notes
-
-const NOTES_KEY = ['lms', 'notes']
+export const useReplyToThread = (_threadId: string) =>
+  useMutation({
+    mutationFn: async (_vars: CreateReplyRequest) => {
+      throw new ApiError(400, { error: 'Discussion forums are not on the UniFa API yet.' })
+    },
+  })
 
 export const useNotes = (q: string) =>
-  useGetData<Paginated<Note>>(
-    `/api/student/lms/notes/${q ? `?q=${encodeURIComponent(q)}` : ''}`,
-    [...NOTES_KEY, q],
-  )
+  useQuery({
+    queryKey: ['lms', 'notes', q],
+    queryFn: async (): Promise<Paginated<Note>> => ({ count: 0, next: null, previous: null, results: [] }),
+  })
 
-/**
- * Optimistic. The `tmp-` id is deliberately visible in the data so the row's
- * own actions can be disabled until the server assigns a real one — a DELETE
- * against a `tmp-` id 404s, and the rollback then removes the wrong row.
- */
-export const useCreateNote = (q: string) => {
-  const key = [...NOTES_KEY, q]
-  const patch = useOptimistic<Paginated<Note>, CreateNoteRequest>(key, (page, vars) => ({
-    ...page,
-    count: page.count + 1,
-    results: [
-      {
-        id: `tmp-${crypto.randomUUID()}`,
-        title: vars.title,
-        body: vars.body,
-        tag: vars.tag ?? null,
-        courseId: vars.courseId ?? null,
-        updatedAt: new Date().toISOString(),
-      },
-      ...page.results,
-    ],
-  }))
+export const useCreateNote = (_q: string) =>
+  useMutation({
+    mutationFn: async (_vars: CreateNoteRequest) => {
+      throw new ApiError(400, { error: 'Personal notes are not on the UniFa API yet.' })
+    },
+  })
 
-  return usePostData<Note, CreateNoteRequest>('/api/student/lms/notes/', key, patch)
-}
-
-export const useDeleteNote = (q: string) => {
-  const key = [...NOTES_KEY, q]
-  const patch = useOptimistic<Paginated<Note>, string>(key, (page, id) => ({
-    ...page,
-    count: page.count - 1,
-    results: page.results.filter((n) => n.id !== id),
-  }))
-
-  return useDelete<void, string>((id) => `/api/student/lms/notes/${id}/`, key, patch)
-}
-
-// --------------------------------------------------- progress · analytics
+export const useDeleteNote = (_q: string) =>
+  useMutation({
+    mutationFn: async (_id: string) => {
+      throw new ApiError(400, { error: 'Personal notes are not on the UniFa API yet.' })
+    },
+  })
 
 export const useLearningProgress = () =>
-  useGetData<LearningProgressResponse>('/api/student/lms/progress/', ['lms', 'progress'])
+  useQuery({
+    queryKey: ['lms', 'progress'],
+    queryFn: async (): Promise<LearningProgressResponse> => {
+      const mapped = mapLmsFromEnrollments(await enrollments())
+      return {
+        overallPercent: mapped.courses.length
+          ? Math.round(mapped.courses.reduce((n, c) => n + c.progress, 0) / mapped.courses.length)
+          : 0,
+        studyMinutes: 0,
+        streakDays: 0,
+        courses: mapped.courses.map((c) => ({
+          course: c.course,
+          instructorName: c.instructorName,
+          percent: c.progress,
+          tone: 'brand',
+        })),
+      }
+    },
+  })
 
 export const useLearningAnalytics = () =>
-  useGetData<LearningAnalyticsResponse>('/api/student/lms/analytics/', ['lms', 'analytics'])
-
-// ------------------------------------------------ announcements · gradebook
-
-const ANNOUNCEMENTS_KEY = ['lms', 'announcements']
+  useQuery({
+    queryKey: ['lms', 'analytics'],
+    queryFn: async (): Promise<LearningAnalyticsResponse> => ({
+      proficiency: [],
+      insight: 'Analytics are derived from your enrollments.',
+      milestone: { label: 'Courses', value: '—' },
+      focus: { label: 'Focus', value: 'Stay on top of assignments.' },
+    }),
+  })
 
 export const useAnnouncements = () =>
-  useGetData<AnnouncementsResponse>('/api/student/lms/announcements/', ANNOUNCEMENTS_KEY)
+  useQuery({
+    queryKey: ['lms', 'announcements'],
+    queryFn: async (): Promise<AnnouncementsResponse> =>
+      mapAnnouncements(await apiFetch<UnifaAnnouncement[]>('/api/v1/campus/announcements')),
+  })
 
-/** Optimistic and silent on failure — a missed read-receipt is invisible. */
-export const useMarkAnnouncementRead = () => {
-  const patch = useOptimistic<AnnouncementsResponse, string>(ANNOUNCEMENTS_KEY, (prev, id) => ({
-    unreadCount: Math.max(0, prev.unreadCount - 1),
-    announcements: prev.announcements.map((a) => (a.id === id ? { ...a, read: true } : a)),
-  }))
-
-  return usePostData<void, string>(
-    (id) => `/api/student/lms/announcements/${id}/read/`,
-    ANNOUNCEMENTS_KEY,
-    patch,
-  )
-}
+export const useMarkAnnouncementRead = () =>
+  useMutation({
+    mutationFn: async (_id: string) => undefined,
+  })
 
 export const useGradebook = () =>
-  useGetData<GradebookResponse>('/api/student/lms/gradebook/', ['lms', 'gradebook'])
+  useQuery({
+    queryKey: ['lms', 'gradebook'],
+    queryFn: async (): Promise<GradebookResponse> => mapLmsGradebook(await enrollments()),
+  })

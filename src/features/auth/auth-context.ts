@@ -3,7 +3,7 @@ import type { AuthUser } from '@/lib/auth'
 
 export type AuthValue = {
   user: AuthUser | null
-  login: (username: string, password: string) => Promise<AuthUser>
+  login: (email: string, password: string) => Promise<AuthUser>
   logout: () => void
 }
 

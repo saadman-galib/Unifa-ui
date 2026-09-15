@@ -1,38 +1,65 @@
-import { useGetData, usePostData } from '@/hooks/use-api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiFetch, ApiError } from '@/hooks/use-api'
+import { mapTransport } from '@/lib/unifa'
+import { mapTicket } from '@/lib/unifa'
 import type {
   CreateServiceRequestRequest,
   ServiceRequest,
   TransportOverviewResponse,
   TransportPaymentHistoryResponse,
 } from '@/types/student'
-
-/** Transport module data (4 screens). Contract: docs/api/student.md (Transport). */
+import type { UnifaRoute, UnifaTicket } from '@/types/unifa'
 
 export const useTransportOverview = () =>
-  useGetData<TransportOverviewResponse>('/api/student/transport/', ['transport', 'overview'])
+  useQuery({
+    queryKey: ['transport', 'overview'],
+    queryFn: async (): Promise<TransportOverviewResponse> =>
+      mapTransport(await apiFetch<UnifaRoute[]>('/api/v1/campus/transport/routes')),
+  })
 
 export const useTransportPayments = () =>
-  useGetData<TransportPaymentHistoryResponse>('/api/student/transport/payments/', [
-    'transport',
-    'payments',
-  ])
+  useQuery({
+    queryKey: ['transport', 'payments'],
+    queryFn: async (): Promise<TransportPaymentHistoryResponse> => ({ payments: [] }),
+  })
 
-/**
- * Pays the first non-PAID entry server-side. Not optimistic — this moves
- * money, see docs/api/student.md §5.3. Invalidates the whole `transport`
- * tree: the payment ledger and the overview's fee summary both move.
- */
-export const usePayTransportFee = () =>
-  usePostData<{ summary: string; at: string }, void>('/api/student/transport/payments/pay/', [
-    'transport',
-  ])
+export const usePayTransportFee = () => {
+  const queryClient = useQueryClient()
+  return useMutation<{ summary: string; at: string }, ApiError, void>({
+    mutationFn: async () => {
+      const routes = await apiFetch<UnifaRoute[]>('/api/v1/campus/transport/routes')
+      const route = routes[0]
+      if (!route) throw new Error('No transport route is available.')
+      const start = new Date()
+      const end = new Date()
+      end.setMonth(end.getMonth() + 4)
+      await apiFetch('/api/v1/campus/transport/passes', {
+        method: 'POST',
+        body: JSON.stringify({
+          routeId: route.id,
+          validFrom: start.toISOString().slice(0, 10),
+          validTo: end.toISOString().slice(0, 10),
+        }),
+      })
+      return { summary: 'Transport pass requested.', at: new Date().toISOString() }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['transport'] })
+    },
+  })
+}
 
-/**
- * POST-only here: the 4 named Transport routes have no request-history view,
- * so the GET hook is skipped (per the brief) rather than built speculatively.
- */
 export const useCreateTransportRequest = () =>
-  usePostData<ServiceRequest, CreateServiceRequestRequest>('/api/student/transport/requests/', [
-    'transport',
-    'requests',
-  ])
+  useMutation({
+    mutationFn: async (vars: CreateServiceRequestRequest): Promise<ServiceRequest> => {
+      const row = await apiFetch<UnifaTicket>('/api/v1/campus/tickets', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'REQUEST',
+          title: vars.subject,
+          body: `Transport: ${vars.description}`,
+        }),
+      })
+      return mapTicket(row)
+    },
+  })

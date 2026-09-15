@@ -1,17 +1,14 @@
 /**
- * JWT token store + claims decoding.
+ * JWT token store + session identity for the UniFa API.
  *
- * Targets Django REST Framework SimpleJWT conventions:
- *   POST /api/token/         {username, password} -> {access, refresh}
- *   POST /api/token/refresh/ {refresh}            -> {access}
+ *   POST /api/v1/auth/login  { email, password } → { token, user }
+ *   Authorization: Bearer <token>
  *
- * ponytail: tokens live in localStorage, which is readable by any XSS on the
- * page. httpOnly refresh cookies are the stronger option but require the
- * Django side to set them — revisit with the backend dev before launch.
+ * There is no refresh token. A 401 is the end of the session.
  */
 
-const ACCESS_KEY = 'unigpt.access'
-const REFRESH_KEY = 'unigpt.refresh'
+const TOKEN_KEY = 'unifa.token'
+const USER_KEY = 'unifa.user'
 
 export type Role = 'student' | 'faculty' | 'admin'
 
@@ -22,42 +19,60 @@ export type AuthUser = {
   email?: string
   avatar?: string
   subtitle?: string
+  studentId?: string | null
+  teacherId?: string | null
 }
 
-/** Claims we expect on the access token. `role` must be a custom claim added
- *  by the Django serializer — SimpleJWT does not emit it by default. */
 type JwtClaims = {
-  user_id?: string | number
-  sub?: string | number
-  role?: string
-  name?: string
-  full_name?: string
+  sub?: string
   email?: string
-  avatar?: string
-  department?: string
+  role?: string
   exp?: number
 }
 
-export const getAccessToken = () => localStorage.getItem(ACCESS_KEY)
-export const getRefreshToken = () => localStorage.getItem(REFRESH_KEY)
+export type StoredAuthUser = {
+  id: string
+  email: string
+  role: string
+  firstName: string
+  lastName: string
+  studentId?: string | null
+  teacherId?: string | null
+  adminId?: string | null
+}
 
-export function setTokens(access: string, refresh?: string) {
-  localStorage.setItem(ACCESS_KEY, access)
-  if (refresh) localStorage.setItem(REFRESH_KEY, refresh)
+export const getAccessToken = () => localStorage.getItem(TOKEN_KEY)
+/** @deprecated UniFa issues a single token. Kept so older call sites compile. */
+export const getRefreshToken = () => null
+
+export function setTokens(access: string, _refresh?: string) {
+  localStorage.setItem(TOKEN_KEY, access)
+}
+
+export function setStoredUser(user: StoredAuthUser) {
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
+}
+
+export function getStoredUser(): StoredAuthUser | null {
+  const raw = localStorage.getItem(USER_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as StoredAuthUser
+  } catch {
+    return null
+  }
 }
 
 export function clearTokens() {
-  localStorage.removeItem(ACCESS_KEY)
-  localStorage.removeItem(REFRESH_KEY)
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(USER_KEY)
 }
 
-/** Decode a JWT payload. Returns null on anything malformed — never throws,
- *  because a corrupt token must log the user out, not crash the app. */
 export function decodeJwt(token: string): JwtClaims | null {
   try {
     const payload = token.split('.')[1]
     if (!payload) return null
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
+    const json = atob(payload.replace(/-/g, '+').replace(/\//g, '_'))
     return JSON.parse(json) as JwtClaims
   } catch {
     return null
@@ -65,32 +80,65 @@ export function decodeJwt(token: string): JwtClaims | null {
 }
 
 const ROLES: Role[] = ['student', 'faculty', 'admin']
-const isRole = (v: unknown): v is Role => ROLES.includes(v as Role)
+const isAppRole = (v: unknown): v is Role => ROLES.includes(v as Role)
 
-/** True when the token is absent, unreadable, or past its `exp`. */
+/** Map UniFa / JWT roles onto the three portal shells. */
+export function mapRole(role: string | null | undefined): Role | null {
+  if (!role) return null
+  const key = role.trim().toUpperCase()
+  if (key === 'STUDENT') return 'student'
+  if (key === 'TEACHER' || key === 'FACULTY') return 'faculty'
+  if (key === 'ADMIN' || key === 'STAFF') return 'admin'
+  const lower = role.trim().toLowerCase()
+  return isAppRole(lower) ? lower : null
+}
+
+export function displayName(user: {
+  firstName?: string | null
+  lastName?: string | null
+  email?: string | null
+}) {
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
+  return name || user.email || 'User'
+}
+
+export function authUserFromStored(user: StoredAuthUser): AuthUser | null {
+  const role = mapRole(user.role)
+  if (!role) return null
+  return {
+    id: user.id,
+    name: displayName(user),
+    role,
+    email: user.email,
+    studentId: user.studentId,
+    teacherId: user.teacherId,
+  }
+}
+
+/** True when the token is absent, unreadable, or past `exp`. Missing `exp` is treated as valid — the API will 401. */
 export function isExpired(token: string | null): boolean {
   if (!token) return true
   const claims = decodeJwt(token)
-  if (!claims?.exp) return true
+  if (!claims) return true
+  if (!claims.exp) return false
   return claims.exp * 1000 <= Date.now()
 }
 
-/** Build the app's user object from an access token. */
+/** Build the app's user object from the stored profile, falling back to JWT claims. */
 export function userFromToken(token: string | null): AuthUser | null {
-  if (!token) return null
+  if (!token || isExpired(token)) return null
+  const stored = getStoredUser()
+  if (stored) return authUserFromStored(stored)
+
   const c = decodeJwt(token)
   if (!c) return null
-
-  const role = isRole(c.role) ? c.role : null
-  if (!role) return null // no role claim -> we cannot pick a shell; treat as unauthenticated
-
+  const role = mapRole(c.role)
+  if (!role) return null
   return {
-    id: String(c.user_id ?? c.sub ?? ''),
-    name: c.full_name ?? c.name ?? c.email ?? 'User',
+    id: String(c.sub ?? ''),
+    name: c.email ?? 'User',
     role,
     email: c.email,
-    avatar: c.avatar,
-    subtitle: c.department,
   }
 }
 
