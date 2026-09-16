@@ -9,7 +9,7 @@ import {
 import { clearTokens, getAccessToken } from '@/lib/auth'
 import type { Envelope, Problem } from '@/types/common'
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? ''
+const BASE_URL = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/$/, '')
 
 /**
  * A non-2xx response. UniFa sends `{ error, details? }`; older mocks sent
