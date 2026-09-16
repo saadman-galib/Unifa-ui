@@ -3,6 +3,7 @@ import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { Bell, LogOut, Menu, Search, Settings, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth/auth-context'
+import { useNotifications, useMarkNotificationRead } from '@/features/campus/api'
 import { homeFor, type Role } from '@/lib/auth'
 import { BRAND_ICON, BRAND_SUBTITLE, NAV, SUB_NAV, type NavEntry } from './nav-config'
 import { NavItem } from './nav-item'
@@ -62,8 +63,7 @@ export function AppShell({ role }: { role: Role }) {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-[280px] p-3">
-                <p className="text-link text-fg-heading">Notifications</p>
-                <p className="mt-1 text-fg-muted">You're all caught up — nothing new right now.</p>
+                <NotificationList />
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -324,5 +324,31 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
         )}
       </aside>
     </>
+  )
+}
+
+function NotificationList() {
+  const { data = [], isPending } = useNotifications()
+  const read = useMarkNotificationRead()
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-link text-fg-heading">Notifications</p>
+      {isPending && <p className="text-fg-muted">Loading…</p>}
+      {!isPending && data.length === 0 && (
+        <p className="text-fg-muted">You're all caught up — nothing new right now.</p>
+      )}
+      {data.slice(0, 6).map((n) => (
+        <button
+          key={n.id}
+          type="button"
+          onClick={() => read.mutate(n.id)}
+          className="rounded-control p-2 text-left hover:bg-surface-subtle"
+        >
+          <p className="text-link text-fg-heading">{n.title ?? 'Notice'}</p>
+          <p className="line-clamp-2 text-fg-muted">{n.body}</p>
+        </button>
+      ))}
+    </div>
   )
 }

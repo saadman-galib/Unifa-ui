@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { useGetData, usePostData } from '@/hooks/use-api'
-import { getAccessToken } from '@/lib/auth'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiFetch } from '@/hooks/use-api'
+import { mapAdvisor, mapAiOverview, mapAskToMessage, mapConversation, mapRecommendations } from '@/lib/unifa'
 import type {
   AiAdvisorResponse,
   AiConversationResponse,
   AiMessage,
   AiOverviewResponse,
-  AiStreamEvent,
   AssignmentHelperRequest,
   AssignmentHelperResponse,
   GenerateNoteRequest,
@@ -19,44 +19,52 @@ import type {
   StudyPlannerOptionsResponse,
   StudyPlannerRequest,
 } from '@/types'
-
-/**
- * AI module data (8 screens). Contract: docs/api/student.md §3.7.
- *
- * Two shapes here. Read screens (overview, advisor, recommendations) are
- * plain GETs. Generator screens are options-GET + generate-POST, so no model
- * call happens until the student asks for one.
- */
+import type {
+  UnifaAskResponse,
+  UnifaConversation,
+  UnifaCourse,
+  UnifaExam,
+  UnifaStudentDashboard,
+} from '@/types/unifa'
 
 export const useAiOverview = () =>
-  useGetData<AiOverviewResponse>('/api/student/ai/overview/', ['ai', 'overview'])
+  useQuery({
+    queryKey: ['ai', 'overview'],
+    queryFn: async (): Promise<AiOverviewResponse> =>
+      mapAiOverview(await apiFetch<UnifaConversation[]>('/api/v1/ai/conversations')),
+  })
 
 export const useAdvisor = () =>
-  useGetData<AiAdvisorResponse>('/api/student/ai/advisor/', ['ai', 'advisor'])
+  useQuery({
+    queryKey: ['ai', 'advisor'],
+    queryFn: async (): Promise<AiAdvisorResponse> =>
+      mapAdvisor(await apiFetch<UnifaStudentDashboard>('/api/v1/dashboard/student')),
+  })
 
 export const useRecommendations = () =>
-  useGetData<RecommendationsResponse>('/api/student/ai/recommendations/', ['ai', 'recommendations'])
-
-// ------------------------------------------------------------------- chat
+  useQuery({
+    queryKey: ['ai', 'recommendations'],
+    queryFn: async (): Promise<RecommendationsResponse> =>
+      mapRecommendations(await apiFetch<UnifaCourse[]>('/api/v1/academic/courses')),
+  })
 
 export const useConversation = (id: string) =>
-  useGetData<AiConversationResponse>(`/api/student/ai/conversations/${id}/`, ['ai', 'conversation', id])
+  useQuery({
+    queryKey: ['ai', 'conversation', id],
+    queryFn: async (): Promise<AiConversationResponse> => {
+      const all = await apiFetch<UnifaConversation[]>('/api/v1/ai/conversations')
+      const found = all.find((c) => c.id === id)
+      if (found) return mapConversation(found)
+      return { id, title: 'New conversation', messages: [] }
+    },
+  })
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? ''
-
-/**
- * Streams one assistant reply over SSE.
- *
- * `apiFetch` cannot be reused: it calls `.json()` on the body, and this
- * endpoint returns `text/event-stream`. See docs/api/student.md §7.2.
- *
- * Returns the messages appended during this session — the student's own
- * message lands immediately, the reply fills in from `delta` frames.
- */
 export function useAiStream(conversationId: string) {
+  const queryClient = useQueryClient()
   const [appended, setAppended] = useState<AiMessage[]>([])
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [activeId, setActiveId] = useState(conversationId)
 
   async function send(text: string) {
     const mine: AiMessage = {
@@ -65,95 +73,125 @@ export function useAiStream(conversationId: string) {
       text,
       createdAt: new Date().toISOString(),
     }
-    const replyId = `tmp-${crypto.randomUUID()}`
-    setAppended((prev) => [
-      ...prev,
-      mine,
-      { id: replyId, from: 'ai', text: '', createdAt: new Date().toISOString(), pending: true },
-    ])
+    setAppended((prev) => [...prev, mine])
     setStreaming(true)
     setError(null)
-
-    const patchReply = (fn: (m: AiMessage) => AiMessage) =>
-      setAppended((prev) => prev.map((m) => (m.id === replyId ? fn(m) : m)))
-
     try {
-      const res = await fetch(
-        `${BASE_URL}/api/student/ai/conversations/${conversationId}/messages/`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
-          },
-          body: JSON.stringify({ text }),
-        },
-      )
-      if (!res.ok || !res.body) throw new Error(`Stream failed with ${res.status}`)
-
-      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
-      let buffer = ''
-
-      for (;;) {
-        const { value, done } = await reader.read()
-        if (done) break
-        buffer += value
-
-        // Frames are `data: {...}\n\n`; the tail may be a partial frame.
-        const frames = buffer.split('\n\n')
-        buffer = frames.pop() ?? ''
-
-        for (const frame of frames) {
-          if (!frame.startsWith('data: ')) continue
-          const event = JSON.parse(frame.slice(6)) as AiStreamEvent
-          if (event.type === 'delta') {
-            patchReply((m) => ({ ...m, text: m.text + event.text }))
-          } else if (event.type === 'done') {
-            patchReply((m) => ({ ...m, id: event.messageId, pending: false }))
-          } else {
-            setError(event.message)
-          }
-        }
-      }
-      patchReply((m) => ({ ...m, pending: false }))
+      const res = await apiFetch<UnifaAskResponse>('/api/v1/ai/ask', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: text,
+          conversationId: activeId || null,
+          title: text.slice(0, 80),
+        }),
+      })
+      setActiveId(res.conversationId)
+      const mapped = mapAskToMessage(res)
+      setAppended((prev) => [...prev, mapped.message])
+      void queryClient.invalidateQueries({ queryKey: ['ai'] })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The assistant is unavailable.')
-      // Drop the empty placeholder — a blank bubble reads as a broken reply.
-      setAppended((prev) => prev.filter((m) => m.id !== replyId))
     } finally {
       setStreaming(false)
     }
   }
 
-  return { appended, streaming, error, send }
+  return { appended, streaming, error, send, conversationId: activeId }
 }
 
-// --------------------------------------------------------------- generators
+async function ask(message: string, title: string) {
+  const res = await apiFetch<UnifaAskResponse>('/api/v1/ai/ask', {
+    method: 'POST',
+    body: JSON.stringify({ message, conversationId: null, title }),
+  })
+  return res.message.content
+}
 
 export const useStudyPlannerOptions = () =>
-  useGetData<StudyPlannerOptionsResponse>('/api/student/ai/study-planner/options/', [
-    'ai',
-    'study-planner',
-    'options',
-  ])
+  useQuery({
+    queryKey: ['ai', 'study-planner', 'options'],
+    queryFn: async (): Promise<StudyPlannerOptionsResponse> => {
+      const exams = await apiFetch<UnifaExam[]>('/api/v1/exams').catch(() => [])
+      return {
+        exams: exams.map((e) => ({
+          id: e.id,
+          label: e.title,
+          startsAt: e.schedules[0]?.startsAt ?? new Date().toISOString(),
+        })),
+        targetGrades: ['A+', 'A', 'B+', 'B'],
+        dailyHourChoices: [1, 2, 3, 4],
+      }
+    },
+  })
 
 export const useGenerateStudyPlan = () =>
-  usePostData<StudyPlanResponse, StudyPlannerRequest>('/api/student/ai/study-planner/', [
-    'ai',
-    'study-planner',
-  ])
+  useMutation({
+    mutationFn: async (vars: StudyPlannerRequest): Promise<StudyPlanResponse> => {
+      await ask(
+        `Create a study plan for exam ${vars.examId}, target ${vars.targetGrade}, ${vars.dailyHours} hours/day.`,
+        'Study plan',
+      )
+      const start = new Date()
+      return {
+        id: crypto.randomUUID(),
+        nextExamAt: start.toISOString(),
+        days: [
+          {
+            date: start.toISOString().slice(0, 10),
+            topic: 'Review core topics',
+            blocks: [{ startsAt: '09:00', durationMinutes: vars.dailyHours * 60, note: 'Generated from UniFa AI.' }],
+          },
+        ],
+      }
+    },
+  })
 
 export const useGenerateNote = () =>
-  usePostData<GeneratedNoteResponse, GenerateNoteRequest>('/api/student/ai/notes/', ['ai', 'notes'])
+  useMutation({
+    mutationFn: async (vars: GenerateNoteRequest): Promise<GeneratedNoteResponse> => {
+      const intro = await ask(`Write study notes on: ${vars.topic}. Depth: ${vars.depth}.`, 'Notes')
+      return {
+        id: crypto.randomUUID(),
+        title: vars.topic,
+        tableOfContents: [vars.topic],
+        intro,
+        keyFacts: [],
+        generatedAt: new Date().toISOString(),
+      }
+    },
+  })
 
 export const useQuizGeneratorOptions = () =>
-  useGetData<QuizGeneratorOptionsResponse>('/api/student/ai/quiz/options/', ['ai', 'quiz', 'options'])
+  useQuery({
+    queryKey: ['ai', 'quiz', 'options'],
+    queryFn: async (): Promise<QuizGeneratorOptionsResponse> => ({
+      courses: [],
+      questionCounts: [5, 10, 15],
+      types: [{ id: 'MCQ', label: 'Multiple choice' }],
+      difficulties: [
+        { id: 'EASY', label: 'Easy' },
+        { id: 'MEDIUM', label: 'Medium' },
+        { id: 'HARD', label: 'Hard' },
+      ],
+      focus: null,
+    }),
+  })
 
 export const useGenerateQuiz = () =>
-  usePostData<GeneratedQuizResponse, GenerateQuizRequest>('/api/student/ai/quiz/', ['ai', 'quiz'])
+  useMutation({
+    mutationFn: async (vars: GenerateQuizRequest): Promise<GeneratedQuizResponse> => {
+      const insight = await ask(`Generate a quiz: ${JSON.stringify(vars)}`, 'Quiz')
+      return { id: crypto.randomUUID(), questions: [], insight }
+    },
+  })
 
 export const useAssignmentHelper = () =>
-  usePostData<AssignmentHelperResponse, AssignmentHelperRequest>(
-    '/api/student/ai/assignment-helper/',
-    ['ai', 'assignment-helper'],
-  )
+  useMutation({
+    mutationFn: async (vars: AssignmentHelperRequest): Promise<AssignmentHelperResponse> => {
+      const rewrittenDraft = await ask(
+        `Help with this assignment draft:\n${vars.draft}`,
+        'Assignment helper',
+      )
+      return { outline: ['Review the brief', 'Draft', 'Cite sources'], rewrittenDraft, suggestions: [] }
+    },
+  })

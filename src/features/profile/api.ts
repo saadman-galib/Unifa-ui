@@ -1,4 +1,6 @@
-import { useGetData, useOptimistic, usePatchData, usePostData } from '@/hooks/use-api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiFetch, ApiError, useMappedGet } from '@/hooks/use-api'
+import { mapProfile } from '@/lib/unifa'
 import type {
   ChangePasswordRequest,
   ProfileDocument,
@@ -6,50 +8,67 @@ import type {
   SecurityResponse,
   UpdateProfileRequest,
 } from '@/types/student'
-
-/**
- * My Profile (5 screens). Contract: docs/api/student.md §Profile.
- *
- * One GET covers all 4 tab routes — screen-shaped like every other module,
- * see docs/api/student.md §2.1. Security lives on its own GET/mutations
- * since it is a separate drill-in, not a tab.
- */
+import type { UnifaMe } from '@/types/unifa'
 
 const PROFILE_KEY = ['student', 'profile']
 
-export const useProfile = () => useGetData<ProfileResponse>('/api/student/profile/', PROFILE_KEY)
+export const useProfile = () =>
+  useMappedGet<UnifaMe, ProfileResponse>('/api/v1/auth/me', PROFILE_KEY, mapProfile)
 
-/**
- * Optimistic — contact/address/emergency-contact fields, instantly
- * reversible. The server still owns the rest: anything outside the
- * self-editable subset comes back 403 rather than being silently dropped.
- */
-export const useUpdateProfile = () => {
-  const patch = useOptimistic<ProfileResponse, UpdateProfileRequest>(
-    PROFILE_KEY,
-    (prev, vars) => ({ ...prev, ...vars }),
-  )
-  return usePatchData<ProfileResponse, UpdateProfileRequest>('/api/student/profile/', PROFILE_KEY, patch)
-}
+export const useUpdateProfile = () =>
+  useMutation({
+    mutationFn: async (_vars: UpdateProfileRequest): Promise<ProfileResponse> => {
+      throw new ApiError(400, { error: 'Contact details are owned by the registrar in UniFa.' })
+    },
+  })
 
-/** Multipart — the browser owns the boundary, so never set Content-Type. */
 export const useUploadPhoto = () =>
-  usePostData<{ avatarUrl: string | null }, FormData>('/api/student/profile/photo/', PROFILE_KEY)
+  useMutation({
+    mutationFn: async (_form: FormData): Promise<{ avatarUrl: string | null }> => {
+      throw new ApiError(400, { error: 'Photo upload is not available on the UniFa API yet.' })
+    },
+  })
 
 export const useUploadDocument = () =>
-  usePostData<ProfileDocument, FormData>('/api/student/profile/documents/', PROFILE_KEY)
+  useMutation({
+    mutationFn: async (_form: FormData): Promise<ProfileDocument> => {
+      throw new ApiError(400, { error: 'Document upload is not available on the UniFa API yet.' })
+    },
+  })
 
 export const useSecurity = () =>
-  useGetData<SecurityResponse>('/api/student/profile/security/', ['student', 'profile', 'security'])
+  useQuery({
+    queryKey: ['student', 'profile', 'security'],
+    queryFn: async (): Promise<SecurityResponse> => {
+      const me = await apiFetch<UnifaMe>('/api/v1/auth/me')
+      return {
+        twoFactorEnabled: false,
+        smsRecoveryPhone: me.phone,
+        authenticatorConfigured: false,
+        sessions: [],
+      }
+    },
+  })
 
-export const useChangePassword = () =>
-  usePostData<{ summary: string; at: string }, ChangePasswordRequest>(
-    '/api/student/profile/security/password/',
-    ['student', 'profile', 'security'],
-  )
+export const useChangePassword = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: ChangePasswordRequest) => {
+      await apiFetch<{ ok: true }>('/api/v1/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify(vars),
+      })
+      return { summary: 'Your password has been updated.', at: new Date().toISOString() }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['student', 'profile', 'security'] })
+    },
+  })
+}
 
 export const useRevokeOtherSessions = () =>
-  usePostData<{ summary: string; at: string }, void>(
-    '/api/student/profile/security/sessions/revoke-others/',
-    ['student', 'profile', 'security'],
-  )
+  useMutation<{ summary: string; at: string }, ApiError, void>({
+    mutationFn: async () => {
+      throw new ApiError(400, { error: 'Session revoke is not available on the UniFa API yet.' })
+    },
+  })

@@ -1,30 +1,50 @@
-import { useGetData, usePostData } from '@/hooks/use-api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiFetch, ApiError } from '@/hooks/use-api'
+import { mapHostel, mapTicket } from '@/lib/unifa'
 import type {
   CreateServiceRequestRequest,
   HostelLedgerResponse,
   HostelOverviewResponse,
   ServiceRequest,
 } from '@/types/student'
+import type { UnifaHostel, UnifaTicket } from '@/types/unifa'
 
-/** Hostel module data. Contract: docs/api/student.md (Hostel). */
-
-/** Also backs the Room Details screen — same payload, no separate endpoint. */
 export const useHostelOverview = () =>
-  useGetData<HostelOverviewResponse>('/api/student/hostel/', ['hostel', 'overview'])
+  useQuery({
+    queryKey: ['hostel', 'overview'],
+    queryFn: async (): Promise<HostelOverviewResponse> =>
+      mapHostel(await apiFetch<UnifaHostel[]>('/api/v1/campus/hostels')),
+  })
 
 export const useHostelLedger = () =>
-  useGetData<HostelLedgerResponse>('/api/student/hostel/ledger/', ['hostel', 'ledger'])
+  useQuery({
+    queryKey: ['hostel', 'ledger'],
+    queryFn: async (): Promise<HostelLedgerResponse> => ({ payments: [] }),
+  })
 
-/** Not optimistic — a real payment action. See docs/api/use-api.ts `useOptimistic` note. */
 export const usePayHostelFee = () =>
-  usePostData<{ summary: string; at: string }, { paymentId: string }>(
-    '/api/student/hostel/ledger/pay/',
-    ['hostel', 'ledger'],
-  )
+  useMutation<{ summary: string; at: string }, ApiError, { paymentId: string }>({
+    mutationFn: async () => {
+      throw new ApiError(400, { error: 'Hostel fees are billed through Finance invoices in UniFa.' })
+    },
+  })
 
-/** Not optimistic — the server assigns the reference, so there is nothing honest to render early. */
-export const useCreateHostelRequest = () =>
-  usePostData<ServiceRequest, CreateServiceRequestRequest>('/api/student/hostel/requests/', [
-    'hostel',
-    'requests',
-  ])
+export const useCreateHostelRequest = () => {
+  const queryClient = useQueryClient()
+  return useMutation<ServiceRequest, ApiError, CreateServiceRequestRequest>({
+    mutationFn: async (vars: CreateServiceRequestRequest): Promise<ServiceRequest> => {
+      const row = await apiFetch<UnifaTicket>('/api/v1/campus/tickets', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'REQUEST',
+          title: vars.subject,
+          body: `Hostel: ${vars.description}`,
+        }),
+      })
+      return mapTicket(row)
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['hostel'] })
+    },
+  })
+}

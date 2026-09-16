@@ -1,45 +1,62 @@
 import { useNavigate } from 'react-router'
-import { useGetData, usePostData } from '@/hooks/use-api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiFetch } from '@/hooks/use-api'
+import { mapServices, mapTicket } from '@/lib/unifa'
 import type {
   CreateServiceRequestRequest,
   ServiceRequest,
   ServiceRequestsResponse,
   StudentServicesResponse,
 } from '@/types/student'
+import type { UnifaTicket } from '@/types/unifa'
 
-/** Student Services module data. Contract: docs/api/student.md (Student Services). */
+const tickets = () => apiFetch<UnifaTicket[]>('/api/v1/campus/tickets')
 
 export const useStudentServices = () =>
-  useGetData<StudentServicesResponse>('/api/student/services/', ['services', 'dashboard'])
+  useQuery({
+    queryKey: ['services', 'dashboard'],
+    queryFn: async (): Promise<StudentServicesResponse> => mapServices(await tickets()),
+  })
 
-export const useServiceRequests = (status: string) => {
-  const params = new URLSearchParams()
-  if (status && status !== 'ALL') params.set('status', status)
-  const qs = params.toString()
-
-  return useGetData<ServiceRequestsResponse>(
-    `/api/student/services/requests/${qs ? `?${qs}` : ''}`,
-    ['services', 'requests', status],
-  )
-}
+export const useServiceRequests = (status: string) =>
+  useQuery({
+    queryKey: ['services', 'requests', status],
+    queryFn: async (): Promise<ServiceRequestsResponse> => {
+      const mapped = (await tickets()).map(mapTicket)
+      const requests =
+        status && status !== 'ALL' ? mapped.filter((r) => r.status === status) : mapped
+      return { requests }
+    },
+  })
 
 export const useServiceRequestDetail = (id: string) =>
-  useGetData<ServiceRequest>(`/api/student/services/requests/${id}/`, ['services', 'requests', 'detail', id])
+  useQuery({
+    queryKey: ['services', 'requests', 'detail', id],
+    queryFn: async (): Promise<ServiceRequest> => {
+      const found = (await tickets()).map(mapTicket).find((t) => t.id === id)
+      if (!found) throw new Error('Request not found')
+      return found
+    },
+  })
 
-/**
- * Not optimistic: the server assigns the reference/id, so there is nothing
- * honest to render until it answers. Navigates to the new request on success.
- */
 export const useCreateServiceRequest = () => {
   const navigate = useNavigate()
-
-  return usePostData<ServiceRequest, CreateServiceRequestRequest>(
-    '/api/student/services/requests/',
-    ['services'],
-    {
-      onSuccess: (data) => {
-        void navigate(`/student/services/${data.id}`)
-      },
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: CreateServiceRequestRequest): Promise<ServiceRequest> => {
+      const row = await apiFetch<UnifaTicket>('/api/v1/campus/tickets', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'REQUEST',
+          title: vars.subject,
+          body: `${vars.category} (${vars.priority}): ${vars.description}`,
+        }),
+      })
+      return mapTicket(row)
     },
-  )
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ['services'] })
+      void navigate(`/student/services/${data.id}`)
+    },
+  })
 }

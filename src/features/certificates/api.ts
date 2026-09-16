@@ -1,12 +1,33 @@
-import { useGetData, usePostData } from '@/hooks/use-api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiFetch } from '@/hooks/use-api'
+import { mapCertificates } from '@/lib/unifa'
 import type { CertificatesResponse, PrintOrder, PrintOrderRequest } from '@/types'
+import type { UnifaCertificate } from '@/types/unifa'
 
-/** Certificates & Achievements — Figma 6:5438 / 6:1047. */
 export const useCertificates = () =>
-  useGetData<CertificatesResponse>('/api/student/certificates/', ['certificates'])
+  useQuery({
+    queryKey: ['certificates'],
+    queryFn: async (): Promise<CertificatesResponse> =>
+      mapCertificates(await apiFetch<UnifaCertificate[]>('/api/v1/campus/certificates')),
+  })
 
-export const useOrderPrints = () =>
-  usePostData<PrintOrder, PrintOrderRequest>(
-    '/api/student/certificates/print-orders/',
-    ['certificates'],
-  )
+export const useOrderPrints = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: PrintOrderRequest): Promise<PrintOrder> => {
+      await apiFetch('/api/v1/campus/certificates', {
+        method: 'POST',
+        body: JSON.stringify({ type: vars.certificateIds[0] ?? 'TRANSCRIPT' }),
+      })
+      return {
+        id: crypto.randomUUID(),
+        status: 'PENDING',
+        fee: '0',
+        createdAt: new Date().toISOString(),
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['certificates'] })
+    },
+  })
+}

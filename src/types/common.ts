@@ -173,9 +173,9 @@ export type Metric = {
 
 export type Role = 'student' | 'faculty' | 'admin'
 
-/** `POST /api/token/` */
-export type TokenRequest = { username: string; password: string }
-export type TokenResponse = { access: string; refresh: string }
+/** `POST /api/v1/auth/login` */
+export type TokenRequest = { email: string; password: string }
+export type TokenResponse = { token: string }
 
 /** `POST /api/token/refresh/` */
 export type RefreshRequest = { refresh: string }

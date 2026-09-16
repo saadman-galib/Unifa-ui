@@ -113,6 +113,13 @@ export const SCREEN_COMPONENTS: Record<string, ComponentType> = {
   // ------------------------------------------------------- certificates
   '/student/certificates': page(() => import('@/features/certificates/page'), 'Certificates'),
 
+  '/student/clubs': page(() => import('@/features/campus/pages/clubs'), 'Clubs'),
+  '/student/digital-id': page(() => import('@/features/campus/pages/digital-id'), 'DigitalId'),
+  '/student/career': page(() => import('@/features/campus/pages/career'), 'Career'),
+  '/student/communication': page(() => import('@/features/campus/pages/communication'), 'Communication'),
+  '/student/settings': page(() => import('@/features/campus/pages/settings'), 'Settings'),
+  '/faculty/settings': page(() => import('@/features/campus/pages/settings'), 'Settings'),
+
   // ------------------------------------------------------ My Profile
   '/student/profile': page(() => import('@/features/profile/pages/personal-info'), 'PersonalInfo'),
   '/student/profile/academic': page(() => import('@/features/profile/pages/academic-info'), 'AcademicInfo'),

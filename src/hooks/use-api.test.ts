@@ -102,6 +102,15 @@ test('returns the first rejection when a field fails twice', () => {
   expect(err.fieldError('amount')).toBe('Minimum payable is 500.00.')
 })
 
+test('parses UniFa { error, details.fieldErrors } bodies', () => {
+  const err = new ApiError(400, {
+    error: 'Validation failed',
+    details: { formErrors: [], fieldErrors: { email: ['Invalid email'] } },
+  })
+  expect(err.detail).toBe('Validation failed')
+  expect(err.fieldError('email')).toBe('Invalid email')
+})
+
 test('falls back to about:blank for anything that never reached the app', () => {
   // A proxy 502 serves HTML; a dropped connection serves nothing.
   const err = new ApiError(502, '<html>Bad Gateway</html>')

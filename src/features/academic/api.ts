@@ -1,4 +1,18 @@
-import { useDelete, useGetData, usePostData } from '@/hooks/use-api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiFetch, ApiError } from '@/hooks/use-api'
+import {
+  mapCalendar,
+  mapClassrooms,
+  mapCourseOfferings,
+  mapCurriculum,
+  mapCreditProgress,
+  mapDegreeProgress,
+  mapDropAdd,
+  mapFacultyDirectory,
+  mapMyCourses,
+  mapRoutine,
+  mapSemesterRegistration,
+} from '@/lib/unifa'
 import type {
   AcademicCalendarResponse,
   AddCourseRequest,
@@ -17,100 +31,177 @@ import type {
   SemesterRegistrationRequest,
   SemesterRegistrationResponse,
 } from '@/types'
+import type {
+  UnifaCalendarEvent,
+  UnifaCourse,
+  UnifaDepartment,
+  UnifaEnrollment,
+  UnifaSchedule,
+  UnifaSection,
+  UnifaSemester,
+  UnifaTranscript,
+} from '@/types/unifa'
 
-/** Academic module data (11 screens). Contract: docs/api/student.md §3.2. */
+export const useMyEnrollments = () =>
+  useQuery({
+    queryKey: ['academic', 'enrollments'],
+    queryFn: () => apiFetch<UnifaEnrollment[]>('/api/v1/academic/my/enrollments'),
+  })
 
 export const useMyCourses = () =>
-  useGetData<MyCoursesResponse>('/api/student/academic/courses/', ['academic', 'courses'])
+  useQuery({
+    queryKey: ['academic', 'courses'],
+    queryFn: async (): Promise<MyCoursesResponse> =>
+      mapMyCourses(await apiFetch<UnifaEnrollment[]>('/api/v1/academic/my/enrollments')),
+  })
 
 export const useCurriculum = () =>
-  useGetData<CurriculumResponse>('/api/student/academic/curriculum/', ['academic', 'curriculum'])
+  useQuery({
+    queryKey: ['academic', 'curriculum'],
+    queryFn: async (): Promise<CurriculumResponse> => {
+      const [courses, enrollments] = await Promise.all([
+        apiFetch<UnifaCourse[]>('/api/v1/academic/courses'),
+        apiFetch<UnifaEnrollment[]>('/api/v1/academic/my/enrollments'),
+      ])
+      return mapCurriculum(courses, enrollments)
+    },
+  })
 
 export const useDegreeProgress = () =>
-  useGetData<DegreeProgressResponse>('/api/student/academic/degree-progress/', [
-    'academic',
-    'degree-progress',
-  ])
+  useQuery({
+    queryKey: ['academic', 'degree-progress'],
+    queryFn: async (): Promise<DegreeProgressResponse> =>
+      mapDegreeProgress(await apiFetch<UnifaTranscript>('/api/v1/academic/my/transcript')),
+  })
 
 export const useCreditProgress = () =>
-  useGetData<CreditProgressResponse>('/api/student/academic/credits/', ['academic', 'credits'])
+  useQuery({
+    queryKey: ['academic', 'credits'],
+    queryFn: async (): Promise<CreditProgressResponse> =>
+      mapCreditProgress(await apiFetch<UnifaTranscript>('/api/v1/academic/my/transcript')),
+  })
 
 export const useClassRoutine = () =>
-  useGetData<ClassRoutineResponse>('/api/student/academic/routine/', ['academic', 'routine'])
+  useQuery({
+    queryKey: ['academic', 'routine'],
+    queryFn: async (): Promise<ClassRoutineResponse> =>
+      mapRoutine(await apiFetch<UnifaSchedule[]>('/api/v1/academic/my/routine')),
+  })
 
-/** `month` is `YYYY-MM`; the response echoes it so a stale reply is discardable. */
 export const useAcademicCalendar = (month: string) =>
-  useGetData<AcademicCalendarResponse>(`/api/student/academic/calendar/?month=${month}`, [
-    'academic',
-    'calendar',
-    month,
-  ])
+  useQuery({
+    queryKey: ['academic', 'calendar', month],
+    queryFn: async (): Promise<AcademicCalendarResponse> =>
+      mapCalendar(await apiFetch<UnifaCalendarEvent[]>('/api/v1/academic/calendar'), month),
+  })
 
 export const useFacultyDirectory = (q: string) =>
-  useGetData<Paginated<FacultyDirectoryEntry>>(
-    `/api/student/academic/faculty/${q ? `?q=${encodeURIComponent(q)}` : ''}`,
-    ['academic', 'faculty', q],
-  )
+  useQuery({
+    queryKey: ['academic', 'faculty', q],
+    queryFn: async (): Promise<Paginated<FacultyDirectoryEntry>> => {
+      const page = mapFacultyDirectory(await apiFetch<UnifaDepartment[]>('/api/v1/academic/departments'))
+      const needle = q.trim().toLowerCase()
+      if (!needle) return page
+      const results = page.results.filter(
+        (f) => f.name.toLowerCase().includes(needle) || f.department.toLowerCase().includes(needle),
+      )
+      return { ...page, count: results.length, results }
+    },
+  })
 
 export const useClassrooms = () =>
-  useGetData<ClassroomsResponse>('/api/student/academic/classrooms/', ['academic', 'classrooms'])
-
-// ------------------------------------------------------------ registration
+  useQuery({
+    queryKey: ['academic', 'classrooms'],
+    queryFn: async (): Promise<ClassroomsResponse> =>
+      mapClassrooms(await apiFetch<UnifaSection[]>('/api/v1/academic/sections')),
+  })
 
 export const useSemesterRegistration = () =>
-  useGetData<SemesterRegistrationResponse>('/api/student/academic/registration/semester/', [
-    'academic',
-    'registration',
-    'semester',
-  ])
+  useQuery({
+    queryKey: ['academic', 'registration', 'semester'],
+    queryFn: async (): Promise<SemesterRegistrationResponse> => {
+      const [semesters, enrollments] = await Promise.all([
+        apiFetch<UnifaSemester[]>('/api/v1/academic/semesters'),
+        apiFetch<UnifaEnrollment[]>('/api/v1/academic/my/enrollments'),
+      ])
+      return mapSemesterRegistration(semesters, enrollments)
+    },
+  })
 
-export const useSubmitSemesterRegistration = () =>
-  usePostData<SemesterRegistrationResponse, SemesterRegistrationRequest>(
-    '/api/student/academic/registration/semester/',
-    ['academic', 'registration', 'semester'],
-  )
+export const useSubmitSemesterRegistration = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (_vars: SemesterRegistrationRequest) =>
+      apiFetch<UnifaEnrollment[]>('/api/v1/academic/my/enrollments'),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['academic'] })
+    },
+  })
+}
 
 const OFFERINGS_KEY = ['academic', 'registration', 'courses']
 
-export const useCourseOfferings = (q: string, department: string) => {
-  const params = new URLSearchParams()
-  if (q) params.set('q', q)
-  if (department && department !== 'All Departments') params.set('department', department)
-  const qs = params.toString()
+export const useCourseOfferings = (q: string, department: string) =>
+  useQuery({
+    queryKey: [...OFFERINGS_KEY, q, department],
+    queryFn: async (): Promise<Paginated<CourseOffering>> => {
+      const [sections, enrollments] = await Promise.all([
+        apiFetch<UnifaSection[]>('/api/v1/academic/sections'),
+        apiFetch<UnifaEnrollment[]>('/api/v1/academic/my/enrollments'),
+      ])
+      return mapCourseOfferings(sections, enrollments, q, department)
+    },
+  })
 
-  return useGetData<Paginated<CourseOffering>>(
-    `/api/student/academic/registration/courses/${qs ? `?${qs}` : ''}`,
-    [...OFFERINGS_KEY, q, department],
-  )
+export const useAddCourse = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: AddCourseRequest) =>
+      apiFetch('/api/v1/academic/enrollments', {
+        method: 'POST',
+        body: JSON.stringify({ sectionId: vars.offeringId }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['academic'] })
+    },
+  })
 }
 
-/**
- * Not optimistic. Seats are contended, so a 409 is a normal outcome, not an
- * exception — showing the course as added and then yanking it back is worse
- * than a 250ms spinner. See docs/api/student.md §5.2.
- */
-export const useAddCourse = () =>
-  usePostData<CourseOffering, AddCourseRequest>(
-    '/api/student/academic/registration/courses/',
-    OFFERINGS_KEY,
-  )
-
 export const useRemoveCourse = () =>
-  useDelete<void, string>(
-    (offeringId) => `/api/student/academic/registration/courses/${offeringId}/`,
-    OFFERINGS_KEY,
-  )
+  useMutation({
+    mutationFn: async (_offeringId: string) => {
+      throw new ApiError(400, { error: 'Drop is not available on this screen. Use Drop / Add.' })
+    },
+  })
 
 export const useDropAdd = () =>
-  useGetData<DropAddResponse>('/api/student/academic/registration/drop-add/', [
-    'academic',
-    'registration',
-    'drop-add',
-  ])
+  useQuery({
+    queryKey: ['academic', 'registration', 'drop-add'],
+    queryFn: async (): Promise<DropAddResponse> =>
+      mapDropAdd(await apiFetch<UnifaEnrollment[]>('/api/v1/academic/my/enrollments')),
+  })
 
-export const useSubmitDropAdd = () =>
-  usePostData<DropAddResult, DropAddRequest>('/api/student/academic/registration/drop-add/', [
-    'academic',
-    'registration',
-    'drop-add',
-  ])
+export const useSubmitDropAdd = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: DropAddRequest): Promise<DropAddResult> => {
+      if (vars.action === 'DROP') {
+        throw new ApiError(400, { error: 'Dropping a section is not available in UniFa yet.' })
+      }
+      await apiFetch('/api/v1/academic/enrollments', {
+        method: 'POST',
+        body: JSON.stringify({ sectionId: vars.offeringId }),
+      })
+      return {
+        id: vars.offeringId,
+        action: vars.action,
+        offeringId: vars.offeringId,
+        status: 'APPROVED',
+        submittedAt: new Date().toISOString(),
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['academic'] })
+    },
+  })
+}

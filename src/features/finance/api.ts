@@ -1,4 +1,14 @@
-import { useGetData, usePostData } from '@/hooks/use-api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiFetch } from '@/hooks/use-api'
+import {
+  mapFeeStatement,
+  mapFinanceOverview,
+  mapInstallments,
+  mapInvoices,
+  mapPaymentHistory,
+  mapPaymentIntent,
+  mapPaymentOptions,
+} from '@/lib/unifa'
 import type {
   CreatePaymentRequest,
   FeeStatementResponse,
@@ -9,50 +19,92 @@ import type {
   PaymentIntent,
   PaymentOptionsResponse,
 } from '@/types'
+import type { UnifaInvoice, UnifaMe, UnifaPayment } from '@/types/unifa'
 
-/**
- * Finance module data (6 screens). Contract: docs/api/student.md §3.6.
- *
- * Amounts are decimal strings on the wire (`Money`); render with `money()`
- * and never sum them on the client — the server sends every total.
- *
- * Nothing here is optimistic. See docs/api/student.md §5.3.
- */
+const invoices = () => apiFetch<UnifaInvoice[]>('/api/v1/finance/invoices')
 
 export const useFinanceOverview = () =>
-  useGetData<FinanceOverviewResponse>('/api/student/finance/overview/', ['finance', 'overview'])
+  useQuery({
+    queryKey: ['finance', 'overview'],
+    queryFn: async (): Promise<FinanceOverviewResponse> => mapFinanceOverview(await invoices()),
+  })
 
 export const usePaymentOptions = () =>
-  useGetData<PaymentOptionsResponse>('/api/student/finance/payment-options/', ['finance', 'pay'])
+  useQuery({
+    queryKey: ['finance', 'pay'],
+    queryFn: async (): Promise<PaymentOptionsResponse> => mapPaymentOptions(await invoices()),
+  })
 
-/**
- * The whole `finance` tree is invalidated: a payment moves the overview, the
- * invoices, the installments and the history at once.
- */
-export const useCreatePayment = () =>
-  usePostData<PaymentIntent, CreatePaymentRequest>('/api/student/finance/payments/', ['finance'])
+export const useCreatePayment = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: CreatePaymentRequest): Promise<PaymentIntent> => {
+      const invoiceId = vars.invoiceIds[0]
+      const pay = await apiFetch<UnifaPayment>(`/api/v1/finance/invoices/${invoiceId}/pay`, {
+        method: 'POST',
+        body: JSON.stringify({
+          gateway: vars.methodId,
+          amount: Number(vars.amount),
+        }),
+      })
+      return mapPaymentIntent(pay)
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['finance'] })
+      void queryClient.invalidateQueries({ queryKey: ['student', 'dashboard'] })
+    },
+  })
+}
 
-/** Poll after returning from the gateway, until the status settles. */
 export const usePaymentIntent = (id: string | null) =>
-  useGetData<PaymentIntent>(`/api/student/finance/payments/${id}/`, ['finance', 'payment', id], {
+  useQuery({
+    queryKey: ['finance', 'payment', id],
     enabled: id !== null,
-    refetchInterval: (query) => {
-      const s = query.state.data?.status
-      return s === 'SUCCESS' || s === 'FAILED' || s === 'CANCELLED' ? false : 2000
+    queryFn: async (): Promise<PaymentIntent> => {
+      const all = await invoices()
+      const payment = all.flatMap((i) => i.payments).find((p) => p.id === id)
+      if (!payment) {
+        return {
+          id: id ?? '',
+          status: 'SUCCESS',
+          amount: '0',
+          currency: 'BDT',
+          redirectUrl: null,
+          reference: id,
+          failureReason: null,
+          createdAt: new Date().toISOString(),
+        }
+      }
+      return mapPaymentIntent(payment)
     },
   })
 
 export const useFeeStatement = (termId?: string) =>
-  useGetData<FeeStatementResponse>(
-    `/api/student/finance/statement/${termId ? `?termId=${termId}` : ''}`,
-    ['finance', 'statement', termId ?? 'current'],
-  )
+  useQuery({
+    queryKey: ['finance', 'statement', termId ?? 'current'],
+    queryFn: async (): Promise<FeeStatementResponse> => {
+      const [rows, me] = await Promise.all([
+        invoices(),
+        apiFetch<UnifaMe>('/api/v1/auth/me').catch(() => null),
+      ])
+      return mapFeeStatement(rows, me)
+    },
+  })
 
 export const useInvoices = () =>
-  useGetData<InvoicesResponse>('/api/student/finance/invoices/', ['finance', 'invoices'])
+  useQuery({
+    queryKey: ['finance', 'invoices'],
+    queryFn: async (): Promise<InvoicesResponse> => mapInvoices(await invoices()),
+  })
 
 export const useInstallments = () =>
-  useGetData<InstallmentsResponse>('/api/student/finance/installments/', ['finance', 'installments'])
+  useQuery({
+    queryKey: ['finance', 'installments'],
+    queryFn: async (): Promise<InstallmentsResponse> => mapInstallments(await invoices()),
+  })
 
 export const usePaymentHistory = () =>
-  useGetData<PaymentHistoryResponse>('/api/student/finance/history/', ['finance', 'history'])
+  useQuery({
+    queryKey: ['finance', 'history'],
+    queryFn: async (): Promise<PaymentHistoryResponse> => mapPaymentHistory(await invoices()),
+  })

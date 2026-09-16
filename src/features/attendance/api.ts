@@ -1,4 +1,12 @@
-import { useGetData } from '@/hooks/use-api'
+import { useQuery } from '@tanstack/react-query'
+import { apiFetch, useMappedGet } from '@/hooks/use-api'
+import {
+  mapAttendanceAnalytics,
+  mapAttendanceHistory,
+  mapAttendanceOverview,
+  mapCourseAttendance,
+  mapDailyAttendance,
+} from '@/lib/unifa'
 import type {
   AttendanceAnalyticsResponse,
   AttendanceHistoryResponse,
@@ -6,45 +14,43 @@ import type {
   CourseAttendanceResponse,
   DailyAttendanceResponse,
 } from '@/types'
+import type { UnifaAttendanceMy } from '@/types/unifa'
 
-/**
- * Attendance module data (5 screens). Contract: docs/api/student.md §3.4.
- *
- * Read-only by design — marks are set by faculty. There is no student write
- * endpoint here and there must not be one.
- */
+const KEY = ['attendance', 'my'] as const
 
 export const useAttendanceOverview = () =>
-  useGetData<AttendanceOverviewResponse>('/api/student/attendance/overview/', [
-    'attendance',
-    'overview',
-  ])
+  useMappedGet<UnifaAttendanceMy, AttendanceOverviewResponse>(
+    '/api/v1/attendance/my',
+    ['attendance', 'overview'],
+    mapAttendanceOverview,
+  )
 
-/** `date` omitted means today, resolved server-side. */
 export const useDailyAttendance = (date?: string) =>
-  useGetData<DailyAttendanceResponse>(
-    `/api/student/attendance/daily/${date ? `?date=${date}` : ''}`,
-    ['attendance', 'daily', date ?? 'today'],
-  )
+  useQuery({
+    queryKey: ['attendance', 'daily', date ?? 'today'],
+    queryFn: async (): Promise<DailyAttendanceResponse> =>
+      mapDailyAttendance(await apiFetch<UnifaAttendanceMy>('/api/v1/attendance/my'), date),
+  })
 
-/**
- * `courseId` omitted means "the course the student is most at risk in" —
- * the screen has no picker in the design, so the server chooses the default.
- */
 export const useCourseAttendance = (courseId?: string) =>
-  useGetData<CourseAttendanceResponse>(
-    `/api/student/attendance/by-course/${courseId ? `?courseId=${courseId}` : ''}`,
-    ['attendance', 'by-course', courseId ?? 'default'],
-  )
+  useQuery({
+    queryKey: ['attendance', 'by-course', courseId ?? 'default'],
+    queryFn: async (): Promise<CourseAttendanceResponse> =>
+      mapCourseAttendance(await apiFetch<UnifaAttendanceMy>('/api/v1/attendance/my'), courseId),
+  })
 
 export const useAttendanceHistory = () =>
-  useGetData<AttendanceHistoryResponse>('/api/student/attendance/history/', [
-    'attendance',
-    'history',
-  ])
+  useMappedGet<UnifaAttendanceMy, AttendanceHistoryResponse>(
+    '/api/v1/attendance/my',
+    ['attendance', 'history'],
+    mapAttendanceHistory,
+  )
 
 export const useAttendanceAnalytics = () =>
-  useGetData<AttendanceAnalyticsResponse>('/api/student/attendance/analytics/', [
-    'attendance',
-    'analytics',
-  ])
+  useMappedGet<UnifaAttendanceMy, AttendanceAnalyticsResponse>(
+    '/api/v1/attendance/my',
+    ['attendance', 'analytics'],
+    mapAttendanceAnalytics,
+  )
+
+void KEY
